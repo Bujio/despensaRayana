@@ -1,15 +1,6 @@
-import { createUserService, getUserService } from '../services/users.js';
+import { getUserService } from '../services/users.js';
 
 export const usersController = () => {
-    const createUser = async (req, res, next) => {
-        try {
-            const user = await createUserService(req.body);
-            return res.status(201).json(user);
-        } catch (error) {
-            next(error);
-        }
-    };
-
     const getUser = async (req, res, next) => {
         try {
             const { id } = req.params;
@@ -20,5 +11,5 @@ export const usersController = () => {
         }
     };
 
-    return { createUser, getUser };
+    return { getUser };
 };

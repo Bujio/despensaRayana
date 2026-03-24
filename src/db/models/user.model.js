@@ -17,6 +17,7 @@ const userSchema = new Schema({
     phone: {
         type: String,
     },
+    role: { type: String, enum: ['user', 'admin'], default: 'user' },
 });
 
 export const User = mongoose.model('user', userSchema);
