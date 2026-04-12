@@ -1,4 +1,5 @@
 import { Category } from '../db/models/category.model.js';
+import { Product } from '../db/models/product.model.js';
 
 /**
  * Devuelve todas las categorías.
@@ -45,9 +46,22 @@ export const updateCategoryService = async (id, data) => {
 
 /**
  * Elimina una categoría por su ID.
+ * Lanza un error si hay productos que la referencian para evitar
+ * referencias huérfanas en la colección de productos.
+ *
  * @param {string} id
  * @returns {Promise<Category|null>}
+ * @throws {Error} Si la categoría tiene productos asociados
  */
 export const deleteCategoryService = async (id) => {
+    const linked = await Product.countDocuments({ category: id });
+    if (linked > 0) {
+        throw Object.assign(
+            new Error(
+                `Cannot delete category: ${linked} product(s) are still linked to it`,
+            ),
+            { status: 409 },
+        );
+    }
     return await Category.findByIdAndDelete(id);
 };
