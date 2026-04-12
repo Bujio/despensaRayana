@@ -8,3 +8,8 @@ export const getUserService = async (id) => {
         throw new Error(`Error finding user: ${error.message}`);
     }
 };
+
+export const listUsersService = async () => {
+    const listUser = User.find();
+    return listUser;
+};

@@ -17,6 +17,17 @@ const userSchema = new Schema({
     phone: {
         type: String,
     },
+    address: {
+        country: {
+            type: String,
+        },
+        street: {
+            type: String,
+        },
+        codePostal: {
+            type: String,
+        },
+    },
     role: { type: String, enum: ['user', 'admin'], default: 'user' },
 });
 

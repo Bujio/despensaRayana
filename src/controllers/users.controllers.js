@@ -1,4 +1,4 @@
-import { getUserService } from '../services/users.js';
+import { getUserService, listUsersService } from '../services/users.js';
 
 export const usersController = () => {
     const getUser = async (req, res, next) => {
@@ -11,5 +11,14 @@ export const usersController = () => {
         }
     };
 
-    return { getUser };
+    const listUsers = async (req, res, next) => {
+        try {
+            const users = await listUsersService();
+            return res.status(200).json(users);
+        } catch (error) {
+            next(error);
+        }
+    };
+
+    return { getUser, listUsers };
 };
