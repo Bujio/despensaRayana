@@ -84,7 +84,12 @@ export const ordersController = () => {
             if (!order)
                 return res.status(404).json({ message: 'Order not found' });
             if (!isOwnerOrAdmin(order.email, req, res)) return;
-            const updated = await updateOrderService(req.params.id, req.body);
+
+            // Excluimos 'products' del body: cambiar las líneas de un pedido
+            // existente requeriría reajustar el stock, lo que no hace este endpoint.
+            // Para eso se debe borrar y recrear el pedido.
+            const { products: _ignored, ...safeData } = req.body;
+            const updated = await updateOrderService(req.params.id, safeData);
             return res.status(200).json(updated);
         } catch (error) {
             next(error);
