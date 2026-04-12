@@ -16,14 +16,13 @@ const addressSchema = z.object({
  */
 export const registerSchema = z.object({
     name: z
-        .string({ required_error: 'Name is required' })
+        .string({ error: 'Name is required' })
         .min(2, 'Name must be at least 2 characters'),
-    email: z
-        .string({ required_error: 'Email is required' })
-        .email('Invalid email format'),
+    // En Zod v4 se usa z.email() directamente, no z.string().email()
+    email: z.email({ error: 'Invalid email format' }),
     // La contraseña debe tener al menos 6 caracteres, una mayúscula y un número
     password: z
-        .string({ required_error: 'Password is required' })
+        .string({ error: 'Password is required' })
         .min(6, 'Password must be at least 6 characters')
         .regex(/[A-Z]/, 'Password must contain at least one uppercase letter')
         .regex(/[0-9]/, 'Password must contain at least one number'),
@@ -37,10 +36,8 @@ export const registerSchema = z.object({
  * para no dar pistas sobre los requisitos al intentar acceder con credenciales ajenas.
  */
 export const loginSchema = z.object({
-    email: z
-        .string({ required_error: 'Email is required' })
-        .email('Invalid email format'),
-    password: z.string({ required_error: 'Password is required' }),
+    email: z.email({ error: 'Invalid email format' }),
+    password: z.string({ error: 'Password is required' }),
 });
 
 /**

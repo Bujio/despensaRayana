@@ -5,14 +5,14 @@ import { z } from 'zod';
  * Refleja el modelo ProductsOrderSchema de Mongoose.
  */
 const orderProductSchema = z.object({
-    sku: z.string({ required_error: 'SKU is required' }).min(1),
+    sku: z.string({ error: 'SKU is required' }).min(1),
     count: z
         .number()
         .int()
         .positive('Count must be a positive integer')
         .optional(),
     price: z
-        .number({ required_error: 'Price is required' })
+        .number({ error: 'Price is required' })
         .positive('Price must be a positive number'),
     discount: z.number().min(0).max(100).optional(),
     // El impuesto se guarda como string para admitir formatos como "21%" o "IVA reducido"
@@ -27,8 +27,7 @@ const orderProductSchema = z.object({
  */
 export const createOrderSchema = z.object({
     email: z
-        .string({ required_error: 'Email is required' })
-        .email('Invalid email format')
+        .email({ error: 'Invalid email format' })
         .transform((val) => val.toLowerCase()),
     date: z.coerce.date().optional(),
     // El pedido debe tener al menos un producto

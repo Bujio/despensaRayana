@@ -20,9 +20,10 @@ export const validate = (schema) => (req, res, next) => {
         next();
     } catch (error) {
         if (error instanceof ZodError) {
-            // Extraemos solo el campo y el mensaje de cada error para no exponer
-            // información interna de la estructura del schema al cliente
-            const errors = error.errors.map(({ path, message }) => ({
+            // En Zod v4 la propiedad es .issues (antes .errors, ya eliminado).
+            // Extraemos solo el campo y el mensaje para no exponer la estructura
+            // interna del schema al cliente.
+            const errors = error.issues.map(({ path, message }) => ({
                 field: path.join('.'),
                 message,
             }));

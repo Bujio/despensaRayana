@@ -5,7 +5,7 @@ import { z } from 'zod';
  * La cantidad es opcional — si no viene se asume 1.
  */
 export const addCartItemSchema = z.object({
-    sku: z.string({ required_error: 'SKU is required' }).min(1),
+    sku: z.string({ error: 'SKU is required' }).min(1),
     quantity: z.number().int().min(1, 'Quantity must be at least 1').default(1),
 });
 
@@ -15,7 +15,7 @@ export const addCartItemSchema = z.object({
  */
 export const updateCartItemSchema = z.object({
     quantity: z
-        .number({ required_error: 'Quantity is required' })
+        .number({ error: 'Quantity is required' })
         .int()
         .min(1, 'Quantity must be at least 1'),
 });
