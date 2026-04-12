@@ -28,9 +28,11 @@ app.use((_req, res) => {
 // Cualquier error pasado a next(error) en los controllers llega aquí.
 app.use((err, _req, res, _next) => {
     const status = err.status ?? 500;
-    res.status(status).json({
-        message: err.message ?? 'Internal server error',
-    });
+    // Para errores operacionales (status definido) devolvemos el mensaje.
+    // Para errores inesperados (500) ocultamos el mensaje interno para no
+    // exponer detalles de implementación al cliente.
+    const message = status < 500 ? err.message : 'Internal server error';
+    res.status(status).json({ message });
 });
 
 export { app };
