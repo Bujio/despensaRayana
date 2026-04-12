@@ -13,7 +13,7 @@ const { connectDB } = await import('./src/db/init.js');
 
 //Listen APP
 const PORT = process.env.PORT ?? 3000;
-const HOST = process.env.HOST;
+const HOST = process.env.HOST ?? 'localhost';
 
 try {
     await connectDB();
