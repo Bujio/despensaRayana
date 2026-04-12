@@ -1,3 +1,4 @@
+import mongoose from 'mongoose';
 import {
     getProductService,
     listProductsService,
@@ -24,9 +25,17 @@ export const productsController = () => {
         try {
             const pagination = getPagination(req.query);
             // categoryId es opcional: GET /api/products?categoryId=<id>
+            // Si llega, debe ser un ObjectId válido para no provocar CastError
+            const { categoryId } = req.query;
+            if (categoryId && !mongoose.isValidObjectId(categoryId)) {
+                return res
+                    .status(400)
+                    .json({ message: 'Invalid categoryId format' });
+            }
+
             const { data, total } = await listProductsService(
                 pagination,
-                req.query.categoryId,
+                categoryId,
             );
             return res.status(200).json({
                 data,
