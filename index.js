@@ -21,5 +21,8 @@ try {
         console.log(`Server listening on http://${HOST}:${PORT}`),
     );
 } catch (error) {
+    // Si la BD no conecta, abortamos el proceso para que el orquestador
+    // (PM2, Docker, Kubernetes) pueda detectarlo y reiniciar el servicio.
     console.error('Error connecting to database:', error);
+    process.exit(1);
 }
