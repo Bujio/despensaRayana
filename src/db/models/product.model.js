@@ -5,7 +5,7 @@ const ImagesSchema = new mongoose.Schema({
         type: String,
         required: true,
     },
-    nombre: {
+    name: {
         type: String,
     },
 });
@@ -14,18 +14,15 @@ const ProductSchema = new mongoose.Schema(
     {
         name: {
             type: String,
-            required: [true, 'The product must have a name '],
+            required: [true, 'The product must have a name'],
         },
         sku: {
             type: String,
-            required: [
-                true,
-                'You mush have indicate the SKU or product number ',
-            ],
+            required: [true, 'You must indicate the SKU or product number'],
         },
         price: {
             type: Number,
-            require: [true, 'You mush have indicate the price of product'],
+            required: [true, 'You must indicate the price of the product'],
         },
         description: {
             type: String,
@@ -33,7 +30,7 @@ const ProductSchema = new mongoose.Schema(
         supplier: {
             id: {
                 type: Number,
-                require: true,
+                required: true,
             },
             name: String,
             images: [ImagesSchema],
@@ -44,4 +41,4 @@ const ProductSchema = new mongoose.Schema(
     },
 );
 
-module.exports = mongoose.model('Product', ProductSchema);
+export const Product = mongoose.model('Product', ProductSchema);

@@ -4,7 +4,7 @@ export const roleMiddleware = (...roles) => {
             return res.status(401).json({ message: 'Unauthorized' });
         }
 
-        if (!roles.includes(req, res, next)) {
+        if (!roles.includes(req.user.role)) {
             return res
                 .status(403)
                 .json({ message: 'Forbidden: insufficient permissions' });

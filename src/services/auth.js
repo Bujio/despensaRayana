@@ -24,5 +24,6 @@ export const loginService = async ({ email, password }) => {
         { expiresIn: '24h' },
     );
 
-    return { token, user };
+    const { password: _, ...safeUser } = user.toObject();
+    return { token, user: safeUser };
 };
