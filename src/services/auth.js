@@ -32,11 +32,12 @@ export const registerService = async ({ name, password, email, phone }) => {
  */
 export const loginService = async ({ email, password }) => {
     const user = await User.findOne({ email });
-    if (!user) throw new Error('User not found');
 
-    // bcrypt.compare compara el texto plano con el hash almacenado de forma segura
-    const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) throw new Error('Invalid credentials');
+    // Usamos el mismo mensaje para usuario inexistente y contraseña incorrecta.
+    // Mensajes distintos permitirían enumerar qué emails están registrados.
+    const isMatch = user && (await bcrypt.compare(password, user.password));
+    if (!isMatch)
+        throw Object.assign(new Error('Invalid credentials'), { status: 401 });
 
     // El payload del token incluye id, role y email para evitar consultas extra a la BD
     // en los middlewares de autenticación y autorización
