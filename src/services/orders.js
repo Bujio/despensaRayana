@@ -1,5 +1,6 @@
 import { Order, VALID_TRANSITIONS } from '../db/models/order.model.js';
 import { Product } from '../db/models/product.model.js';
+import { sendOrderConfirmationEmail, sendOrderStatusEmail } from './email.js';
 
 /**
  * Verifica que todos los productos del pedido tienen stock suficiente
@@ -106,6 +107,11 @@ export const createOrderService = async (data) => {
         ),
     );
 
+    // Paso 4: enviamos email de confirmación (no bloqueante — si falla no afecta al pedido)
+    sendOrderConfirmationEmail(order).catch((err) =>
+        console.error('Failed to send order confirmation email:', err.message),
+    );
+
     return order;
 };
 
@@ -157,7 +163,14 @@ export const updateOrderStatusService = async (id, newStatus) => {
     }
 
     order.status = newStatus;
-    return await order.save();
+    const updated = await order.save();
+
+    // Notificamos al cliente del cambio de estado (no bloqueante)
+    sendOrderStatusEmail(updated).catch((err) =>
+        console.error('Failed to send order status email:', err.message),
+    );
+
+    return updated;
 };
 
 /**
