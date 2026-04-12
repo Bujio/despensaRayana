@@ -11,31 +11,28 @@ import { sendOrderConfirmationEmail, sendOrderStatusEmail } from './email.js';
  * @throws {Error} Si algún producto no existe o no tiene stock suficiente
  */
 const checkAndFetchStock = async (products) => {
-    const productMap = new Map();
+    // Lanzamos todas las queries en paralelo en lugar de una por una
+    await Promise.all(
+        products.map(async ({ sku, count = 1 }) => {
+            const product = await Product.findOne({ sku });
 
-    for (const { sku, count = 1 } of products) {
-        const product = await Product.findOne({ sku });
+            if (!product) {
+                throw Object.assign(
+                    new Error(`Product with SKU "${sku}" not found`),
+                    { status: 404 },
+                );
+            }
 
-        if (!product) {
-            throw Object.assign(
-                new Error(`Product with SKU "${sku}" not found`),
-                { status: 404 },
-            );
-        }
-
-        if (product.stock < count) {
-            throw Object.assign(
-                new Error(
-                    `Insufficient stock for SKU "${sku}": available ${product.stock}, requested ${count}`,
-                ),
-                { status: 400 },
-            );
-        }
-
-        productMap.set(sku, product);
-    }
-
-    return productMap;
+            if (product.stock < count) {
+                throw Object.assign(
+                    new Error(
+                        `Insufficient stock for SKU "${sku}": available ${product.stock}, requested ${count}`,
+                    ),
+                    { status: 400 },
+                );
+            }
+        }),
+    );
 };
 
 /**
