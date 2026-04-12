@@ -29,9 +29,10 @@ export const cartController = () => {
 
     const updateItem = async (req, res, next) => {
         try {
+            // Normalizamos el SKU a mayúsculas para coincidir con los productos
             const cart = await updateCartItemService(
                 req.user.id,
-                req.params.sku,
+                req.params.sku.toUpperCase(),
                 req.body.quantity,
             );
             return res.status(200).json(cart);
@@ -44,7 +45,7 @@ export const cartController = () => {
         try {
             const cart = await removeCartItemService(
                 req.user.id,
-                req.params.sku,
+                req.params.sku.toUpperCase(),
             );
             return res.status(200).json(cart);
         } catch (error) {

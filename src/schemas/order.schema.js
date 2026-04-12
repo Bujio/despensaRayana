@@ -5,7 +5,12 @@ import { z } from 'zod';
  * Refleja el modelo ProductsOrderSchema de Mongoose.
  */
 const orderProductSchema = z.object({
-    sku: z.string({ error: 'SKU is required' }).min(1),
+    // Normalizamos el SKU a mayúsculas para coincidir con el formato guardado
+    // en la colección de productos (ver product.schema.js).
+    sku: z
+        .string({ error: 'SKU is required' })
+        .min(1)
+        .transform((val) => val.toUpperCase()),
     count: z
         .number()
         .int()
