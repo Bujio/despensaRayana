@@ -27,6 +27,14 @@ const ProductSchema = new mongoose.Schema(
         description: {
             type: String,
         },
+        // Unidades disponibles en almacén. Se descuenta al crear un pedido
+        // y se repone al eliminarlo.
+        stock: {
+            type: Number,
+            required: [true, 'You must indicate the stock of the product'],
+            min: [0, 'Stock cannot be negative'],
+            default: 0,
+        },
         supplier: {
             id: {
                 type: Number,

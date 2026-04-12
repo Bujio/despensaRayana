@@ -5,9 +5,8 @@ import { z } from 'zod';
  * La URL es obligatoria; el nombre es descriptivo y opcional.
  */
 const imageSchema = z.object({
-    url: z
-        .string({ required_error: 'Image URL is required' })
-        .url('Invalid image URL'),
+    // z.url() es la forma correcta en Zod v4 (z.string().url() está deprecado)
+    url: z.url('Invalid image URL'),
     name: z.string().optional(),
 });
 
@@ -38,6 +37,10 @@ export const createProductSchema = z.object({
         .number({ required_error: 'Price is required' })
         .positive('Price must be a positive number'),
     description: z.string().optional(),
+    stock: z
+        .number({ required_error: 'Stock is required' })
+        .int('Stock must be an integer')
+        .min(0, 'Stock cannot be negative'),
     supplier: supplierSchema,
 });
 
