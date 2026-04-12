@@ -1,1 +1,388 @@
-# despensaRayana
+# Despensa Rayana
+
+REST API for a local-products online store from the comarca of Valencia de Alcántara.
+
+## Table of Contents
+
+- [Features](#features)
+- [Tech Stack](#tech-stack)
+- [Project Structure](#project-structure)
+- [Getting Started](#getting-started)
+- [Environment Variables](#environment-variables)
+- [API Reference](#api-reference)
+- [Authentication & Roles](#authentication--roles)
+- [Response Formats](#response-formats)
+- [Security](#security)
+- [Scripts](#scripts)
+- [Author](#author)
+
+## Features
+
+- JWT authentication with role-based access control (`user`, `admin`).
+- Product catalogue with categories, pagination and filtering.
+- Per-user shopping cart with atomic SKU-based operations.
+- Order workflow with a strict state machine and atomic stock decrement (no negative stock under concurrent orders).
+- Image upload to Cloudinary (up to 5 per product).
+- Transactional emails on order creation and status changes.
+- Fail-fast startup: required env vars are validated before the server boots.
+- Graceful shutdown on `SIGTERM` / `SIGINT`.
+
+## Tech Stack
+
+- **Runtime**: Node.js with ES Modules (`"type": "module"`)
+- **Framework**: Express 5
+- **Database**: MongoDB with Mongoose
+- **Authentication**: JWT + bcryptjs
+- **Validation**: Zod v4
+- **Image upload**: Cloudinary + Multer
+- **Emails**: Nodemailer (SMTP)
+- **Security**: Helmet, CORS, express-rate-limit
+- **Code quality**: ESLint, Prettier, Husky, lint-staged, commitlint
+
+## Project Structure
+
+```
+despensa-rayana/
+├── index.js                          # Entry point (env validation, DB, graceful shutdown)
+├── app.js                            # Express app (middleware, routing, error handler)
+├── .env.example                      # Environment variables reference
+└── src/
+    ├── db/
+    │   ├── init.js                   # MongoDB connection
+    │   └── models/
+    │       ├── user.model.js
+    │       ├── product.model.js
+    │       ├── order.model.js        # Includes VALID_TRANSITIONS state machine
+    │       ├── cart.model.js
+    │       └── category.model.js
+    ├── controllers/                  # HTTP layer (req/res)
+    ├── services/                     # Business logic and DB access
+    │   ├── auth.js
+    │   ├── users.js
+    │   ├── products.js
+    │   ├── orders.js                 # Atomic stock decrement + rollback
+    │   ├── cart.js
+    │   ├── categories.js
+    │   └── email.js                  # Nodemailer transactional emails
+    ├── routes/
+    │   ├── index.js                  # Central router mounted at /api
+    │   ├── auth.routes.js
+    │   ├── users.routes.js
+    │   ├── products.routes.js
+    │   ├── orders.routes.js
+    │   ├── cart.routes.js
+    │   └── categories.routes.js
+    ├── middlewares/
+    │   ├── auth.middleware.js        # JWT verification
+    │   ├── role.middleware.js        # Role-based access control
+    │   ├── validate.middleware.js    # Zod body validation
+    │   ├── objectid.middleware.js    # Validates :id params as ObjectId
+    │   ├── upload.middleware.js      # Cloudinary/Multer upload
+    │   └── ratelimit.middleware.js   # writeLimiter (30 req / 15 min per IP)
+    ├── schemas/                      # Zod validation schemas
+    └── utils/
+        ├── env.js                    # Fail-fast env var validation
+        └── pagination.js
+```
+
+## Getting Started
+
+```bash
+# 1. Clone the repository
+git clone <repo-url>
+cd despensa-rayana
+
+# 2. Install dependencies
+npm install
+
+# 3. Set up environment variables
+cp .env.example .env
+# Fill in your credentials in .env
+
+# 4. Start in development mode (node --watch)
+npm run dev
+```
+
+The server will not start if any required environment variable is missing — it will exit with a clear message listing the missing keys.
+
+## Environment Variables
+
+Copy `.env.example` to `.env` and fill in each value. Variables marked **required** are validated on startup.
+
+| Variable                | Required | Description                                                                                              |
+| ----------------------- | :------: | -------------------------------------------------------------------------------------------------------- |
+| `NODE_ENV`              |          | `development` or `production` (affects morgan format)                                                    |
+| `PORT`                  |          | Server port (default: `3000`)                                                                            |
+| `HOST`                  |          | Server host (default: `localhost`)                                                                       |
+| `CORS_ORIGIN`           |          | Allowed frontend origin (e.g. `http://localhost:5173`). If unset, CORS blocks all cross-origin requests. |
+| `MONGODB_URI2`          |    ✅    | MongoDB connection URI                                                                                   |
+| `JWT_SECRET`            |    ✅    | Secret used to sign JWT tokens                                                                           |
+| `EMAIL_HOST`            |    ✅    | SMTP host (Mailtrap, SendGrid, Resend…)                                                                  |
+| `EMAIL_PORT`            |    ✅    | SMTP port (`587` or `465`)                                                                               |
+| `EMAIL_USER`            |    ✅    | SMTP username                                                                                            |
+| `EMAIL_PASS`            |    ✅    | SMTP password or API key                                                                                 |
+| `EMAIL_FROM`            |    ✅    | Sender email address                                                                                     |
+| `CLOUDINARY_CLOUD_NAME` |    ✅    | Cloudinary cloud name                                                                                    |
+| `CLOUDINARY_API_KEY`    |    ✅    | Cloudinary API key                                                                                       |
+| `CLOUDINARY_API_SECRET` |    ✅    | Cloudinary API secret                                                                                    |
+
+### Recommended SMTP providers
+
+| Provider | Host                       | Port | Environment |
+| -------- | -------------------------- | ---- | ----------- |
+| Mailtrap | `sandbox.smtp.mailtrap.io` | 587  | Development |
+| SendGrid | `smtp.sendgrid.net`        | 587  | Production  |
+| Resend   | `smtp.resend.com`          | 465  | Production  |
+
+## API Reference
+
+All routes are prefixed with `/api`.
+
+### Authentication — `/api/auth`
+
+| Method | Route       | Description            | Access | Rate limit      |
+| ------ | ----------- | ---------------------- | ------ | --------------- |
+| POST   | `/register` | Create an account      | Public | 5/hour per IP   |
+| POST   | `/login`    | Sign in, returns a JWT | Public | 10/15min per IP |
+
+**Register body:**
+
+```json
+{
+    "name": "María García",
+    "email": "maria@example.com",
+    "password": "Password1",
+    "phone": "612345678",
+    "address": {
+        "country": "España",
+        "street": "Calle Mayor 1",
+        "codePostal": "10900"
+    }
+}
+```
+
+Password must be at least 6 characters and include at least one uppercase letter and one digit.
+
+**Login body:**
+
+```json
+{ "email": "maria@example.com", "password": "Password1" }
+```
+
+**Login response:**
+
+```json
+{ "token": "<jwt>" }
+```
+
+---
+
+### Users — `/api/users`
+
+| Method | Route  | Description    | Access            |
+| ------ | ------ | -------------- | ----------------- |
+| GET    | `/`    | List all users | Admin             |
+| GET    | `/:id` | Get user       | Own user or admin |
+| PATCH  | `/:id` | Update user    | Own user or admin |
+| DELETE | `/:id` | Delete user    | Admin             |
+
+---
+
+### Products — `/api/products`
+
+| Method | Route         | Description                                                  | Access | Rate limit |
+| ------ | ------------- | ------------------------------------------------------------ | ------ | ---------- |
+| GET    | `/`           | List products (paginated)                                    | Public |            |
+| GET    | `/:id`        | Get product                                                  | Public |            |
+| POST   | `/`           | Create product                                               | Admin  | 30/15min   |
+| PATCH  | `/:id`        | Update product                                               | Admin  | 30/15min   |
+| DELETE | `/:id`        | Delete product                                               | Admin  | 30/15min   |
+| POST   | `/:id/images` | Upload images (`multipart/form-data`, field `images`, max 5) | Admin  | 30/15min   |
+
+**Query params for listing:**
+
+- `page` — page number (default: `1`)
+- `limit` — items per page (default: `10`, max: `100`)
+- `categoryId` — filter by category (must be a valid ObjectId)
+
+**Create product body:**
+
+```json
+{
+    "name": "Extra virgin olive oil",
+    "sku": "AOV-001",
+    "price": 12.5,
+    "description": "Home harvest, cornicabra variety.",
+    "stock": 100,
+    "categoryId": "<category-id>",
+    "supplier": {
+        "id": 1,
+        "name": "Cooperativa San Isidro"
+    }
+}
+```
+
+> SKUs are normalized to uppercase on create/update so lookups stay case-insensitive.
+
+---
+
+### Orders — `/api/orders`
+
+| Method | Route            | Description                   | Access            | Rate limit |
+| ------ | ---------------- | ----------------------------- | ----------------- | ---------- |
+| GET    | `/`              | List all orders (paginated)   | Admin             |            |
+| GET    | `/client/:email` | Orders for a customer         | Own user or admin |            |
+| GET    | `/:id`           | Get order                     | Own user or admin |            |
+| POST   | `/`              | Create order                  | Authenticated     | 30/15min   |
+| PATCH  | `/:id`           | Update order                  | Authenticated     |            |
+| PATCH  | `/:id/status`    | Update order status           | Admin             |            |
+| DELETE | `/:id`           | Delete order (restores stock) | Admin             |            |
+
+**Create order body:**
+
+```json
+{
+    "email": "maria@example.com",
+    "products": [
+        { "sku": "AOV-001", "count": 2, "price": 12.5 },
+        { "sku": "MIEL-RAW", "count": 1, "price": 8.0, "discount": 10 }
+    ]
+}
+```
+
+Creating an order atomically decrements stock for each line. If any SKU is out of stock, all prior decrements in the same request are rolled back and the call fails with `400`.
+
+**Allowed status transitions:**
+
+```
+pending   → processing, cancelled
+processing → shipped, cancelled
+shipped    → delivered
+delivered  → (terminal)
+cancelled  → (terminal)
+```
+
+Status changes are validated in the service layer; invalid transitions return `400`. Customers receive an email when the order is created and when its status changes.
+
+---
+
+### Cart — `/api/cart`
+
+All cart endpoints require authentication. Each user has exactly one cart (unique index on `userId`).
+
+| Method | Route         | Description                  |
+| ------ | ------------- | ---------------------------- |
+| GET    | `/`           | Get the current user's cart  |
+| POST   | `/items`      | Add an item to the cart      |
+| PATCH  | `/items/:sku` | Update item quantity         |
+| DELETE | `/items/:sku` | Remove an item from the cart |
+| DELETE | `/`           | Clear the cart               |
+
+**Add item body:**
+
+```json
+{ "sku": "AOV-001", "quantity": 2 }
+```
+
+**Update item body:**
+
+```json
+{ "quantity": 3 }
+```
+
+---
+
+### Categories — `/api/categories`
+
+| Method | Route  | Description     | Access | Rate limit |
+| ------ | ------ | --------------- | ------ | ---------- |
+| GET    | `/`    | List categories | Public |            |
+| GET    | `/:id` | Get category    | Public |            |
+| POST   | `/`    | Create category | Admin  | 30/15min   |
+| PATCH  | `/:id` | Update category | Admin  | 30/15min   |
+| DELETE | `/:id` | Delete category | Admin  | 30/15min   |
+
+The `slug` field is auto-generated from `name` (accent normalization + kebab-case) on save.
+
+## Authentication & Roles
+
+Protected routes require a JWT in the `Authorization` header:
+
+```
+Authorization: Bearer <token>
+```
+
+The token is issued by `POST /api/auth/login` and contains `{ id, role, email }` in its payload.
+
+| Role    | Description                                                     |
+| ------- | --------------------------------------------------------------- |
+| `user`  | Registered user. Can access their own orders, cart and profile. |
+| `admin` | Full access: products, categories, all orders and all users.    |
+
+New accounts are always created with role `user`. Promote a user to `admin` directly in the database.
+
+## Response Formats
+
+**Validation error (`400`):**
+
+```json
+{
+    "errors": [
+        { "field": "email", "message": "Invalid email format" },
+        {
+            "field": "password",
+            "message": "Password must contain at least one uppercase letter"
+        }
+    ]
+}
+```
+
+**Generic error (`4xx` / `5xx`):**
+
+```json
+{ "message": "Invalid credentials" }
+```
+
+Internal errors (`500`) always return `{ "message": "Internal server error" }` to avoid leaking implementation details.
+
+**Paginated response:**
+
+```json
+{
+    "data": [],
+    "pagination": {
+        "total": 48,
+        "page": 2,
+        "limit": 10,
+        "totalPages": 5
+    }
+}
+```
+
+## Security
+
+- **Helmet** sets secure HTTP headers on every response.
+- **CORS** is locked to the origin in `CORS_ORIGIN`; unset means all cross-origin requests are blocked.
+- **Rate limiting**:
+    - `POST /auth/register` — 5 / hour per IP.
+    - `POST /auth/login` — 10 / 15 min per IP (brute-force protection).
+    - All write endpoints on products and orders — 30 / 15 min per IP.
+- **Password storage**: bcrypt hashes (`saltRounds = 10`); passwords are never returned in responses.
+- **User enumeration**: login returns the same `401` whether the email exists or not.
+- **ObjectId validation** runs before `:id` route handlers to prevent 500s from malformed IDs.
+- **Atomic stock decrement** prevents overselling under concurrent orders and rolls back partial decrements if any SKU fails.
+- **Fail-fast startup**: missing env vars abort boot with a clear message.
+- **Graceful shutdown** closes the HTTP server and the Mongoose connection on `SIGTERM` / `SIGINT`, with a 10 s hard timeout.
+
+## Scripts
+
+```bash
+npm run dev     # Start server with hot-reload (node --watch)
+npm run prepare # Install Husky git hooks (runs automatically after npm install)
+```
+
+Commits are linted by commitlint (conventional commits) and staged files are formatted with Prettier and ESLint via lint-staged.
+
+## Author
+
+**Javier Vivas**
