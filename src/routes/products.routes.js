@@ -5,6 +5,7 @@ import { roleMiddleware } from '../middlewares/role.middleware.js';
 import { validate } from '../middlewares/validate.middleware.js';
 import { upload } from '../middlewares/upload.middleware.js';
 import { validateObjectId } from '../middlewares/objectid.middleware.js';
+import { writeLimiter } from '../middlewares/ratelimit.middleware.js';
 import {
     createProductSchema,
     updateProductSchema,
@@ -25,9 +26,10 @@ export const productsRouter = Router();
 productsRouter.get('/', listProducts);
 productsRouter.get('/:id', validateObjectId, getProduct);
 
-// Escritura restringida a admins
+// Escritura restringida a admins, con rate limit para proteger la BD
 productsRouter.post(
     '/',
+    writeLimiter,
     authMiddleware,
     roleMiddleware('admin'),
     validate(createProductSchema),
@@ -35,6 +37,7 @@ productsRouter.post(
 );
 productsRouter.patch(
     '/:id',
+    writeLimiter,
     validateObjectId,
     authMiddleware,
     roleMiddleware('admin'),
@@ -43,15 +46,18 @@ productsRouter.patch(
 );
 productsRouter.delete(
     '/:id',
+    writeLimiter,
     validateObjectId,
     authMiddleware,
     roleMiddleware('admin'),
     deleteProduct,
 );
 
-// Subida de imágenes: multipart/form-data, campo "images" (máx. 5 archivos)
+// Subida de imágenes: multipart/form-data, campo "images" (máx. 5 archivos).
+// writeLimiter también aquí para evitar uploads masivos a Cloudinary (coste real).
 productsRouter.post(
     '/:id/images',
+    writeLimiter,
     validateObjectId,
     authMiddleware,
     roleMiddleware('admin'),
