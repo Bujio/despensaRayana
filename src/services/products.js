@@ -65,3 +65,24 @@ export const updateProductService = async (id, data) => {
 export const deleteProductService = async (id) => {
     return await Product.findByIdAndDelete(id);
 };
+
+/**
+ * Añade imágenes subidas a Cloudinary al array supplier.images del producto.
+ * Cada archivo procesado por multer-storage-cloudinary incluye path (URL) y filename.
+ *
+ * @param {string} id - ID de MongoDB del producto
+ * @param {Express.Multer.File[]} files - Archivos procesados por multer
+ * @returns {Promise<Product|null>} El producto actualizado o null si no existe
+ */
+export const addProductImagesService = async (id, files) => {
+    const newImages = files.map((file) => ({
+        url: file.path, // URL pública de Cloudinary
+        name: file.filename, // public_id en Cloudinary
+    }));
+
+    return await Product.findByIdAndUpdate(
+        id,
+        { $push: { 'supplier.images': { $each: newImages } } },
+        { new: true },
+    );
+};

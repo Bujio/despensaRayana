@@ -4,6 +4,7 @@ import {
     createProductService,
     updateProductService,
     deleteProductService,
+    addProductImagesService,
 } from '../services/products.js';
 import { getPagination, buildPaginationMeta } from '../utils/pagination.js';
 
@@ -73,11 +74,29 @@ export const productsController = () => {
         }
     };
 
+    const uploadImages = async (req, res, next) => {
+        try {
+            if (!req.files?.length) {
+                return res.status(400).json({ message: 'No images provided' });
+            }
+            const product = await addProductImagesService(
+                req.params.id,
+                req.files,
+            );
+            if (!product)
+                return res.status(404).json({ message: 'Product not found' });
+            return res.status(200).json(product);
+        } catch (error) {
+            next(error);
+        }
+    };
+
     return {
         getProduct,
         listProducts,
         createProduct,
         updateProduct,
         deleteProduct,
+        uploadImages,
     };
 };

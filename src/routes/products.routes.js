@@ -3,6 +3,7 @@ import { productsController } from '../controllers/products.controllers.js';
 import { authMiddleware } from '../middlewares/auth.middleware.js';
 import { roleMiddleware } from '../middlewares/role.middleware.js';
 import { validate } from '../middlewares/validate.middleware.js';
+import { upload } from '../middlewares/upload.middleware.js';
 import {
     createProductSchema,
     updateProductSchema,
@@ -14,6 +15,7 @@ const {
     createProduct,
     updateProduct,
     deleteProduct,
+    uploadImages,
 } = productsController();
 
 export const productsRouter = Router();
@@ -42,4 +44,13 @@ productsRouter.delete(
     authMiddleware,
     roleMiddleware('admin'),
     deleteProduct,
+);
+
+// Subida de imágenes: multipart/form-data, campo "images" (máx. 5 archivos)
+productsRouter.post(
+    '/:id/images',
+    authMiddleware,
+    roleMiddleware('admin'),
+    upload,
+    uploadImages,
 );
