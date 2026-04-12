@@ -1,4 +1,4 @@
-import { Order } from '../db/models/order.model.js';
+import { Order, VALID_TRANSITIONS } from '../db/models/order.model.js';
 import { Product } from '../db/models/product.model.js';
 
 /**
@@ -112,6 +112,42 @@ export const updateOrderService = async (id, data) => {
         new: true, // devuelve el documento actualizado
         runValidators: true, // aplica las validaciones del schema de Mongoose
     });
+};
+
+/**
+ * Cambia el estado de un pedido validando que la transición sea permitida.
+ *
+ * Solo se permiten las transiciones definidas en VALID_TRANSITIONS:
+ *   pending → processing → shipped → delivered
+ *       └──────────────────────────→ cancelled
+ *
+ * Los estados 'delivered' y 'cancelled' son finales: no admiten más cambios.
+ *
+ * @param {string} id - ID de MongoDB del pedido
+ * @param {string} newStatus - Nuevo estado solicitado
+ * @returns {Promise<Order>} El pedido con el estado actualizado
+ * @throws {Error} Si el pedido no existe o la transición no está permitida
+ */
+export const updateOrderStatusService = async (id, newStatus) => {
+    const order = await Order.findById(id);
+    if (!order) {
+        throw Object.assign(new Error('Order not found'), { status: 404 });
+    }
+
+    const allowed = VALID_TRANSITIONS[order.status];
+
+    // Si el array de transiciones permitidas no incluye el nuevo estado, lo rechazamos
+    if (!allowed.includes(newStatus)) {
+        throw Object.assign(
+            new Error(
+                `Invalid transition: cannot change status from "${order.status}" to "${newStatus}"`,
+            ),
+            { status: 400 },
+        );
+    }
+
+    order.status = newStatus;
+    return await order.save();
 };
 
 /**

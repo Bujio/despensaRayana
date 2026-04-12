@@ -6,6 +6,7 @@ import { validate } from '../middlewares/validate.middleware.js';
 import {
     createOrderSchema,
     updateOrderSchema,
+    updateOrderStatusSchema,
 } from '../schemas/order.schema.js';
 
 const {
@@ -14,6 +15,7 @@ const {
     listOrdersByEmail,
     createOrder,
     updateOrder,
+    updateOrderStatus,
     deleteOrder,
 } = ordersController();
 
@@ -35,6 +37,14 @@ ordersRouter.patch(
     authMiddleware,
     validate(updateOrderSchema),
     updateOrder,
+);
+// Solo el admin puede cambiar el estado de un pedido
+ordersRouter.patch(
+    '/:id/status',
+    authMiddleware,
+    roleMiddleware('admin'),
+    validate(updateOrderStatusSchema),
+    updateOrderStatus,
 );
 // Solo el admin puede eliminar pedidos
 ordersRouter.delete(

@@ -4,6 +4,7 @@ import {
     listOrdersByEmailService,
     createOrderService,
     updateOrderService,
+    updateOrderStatusService,
     deleteOrderService,
 } from '../services/orders.js';
 
@@ -70,6 +71,18 @@ export const ordersController = () => {
         }
     };
 
+    const updateOrderStatus = async (req, res, next) => {
+        try {
+            const order = await updateOrderStatusService(
+                req.params.id,
+                req.body.status,
+            );
+            return res.status(200).json(order);
+        } catch (error) {
+            next(error);
+        }
+    };
+
     const deleteOrder = async (req, res, next) => {
         try {
             const order = await deleteOrderService(req.params.id);
@@ -89,6 +102,7 @@ export const ordersController = () => {
         listOrdersByEmail,
         createOrder,
         updateOrder,
+        updateOrderStatus,
         deleteOrder,
     };
 };

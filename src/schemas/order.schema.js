@@ -44,3 +44,18 @@ export const createOrderSchema = z.object({
  * .partial() hace todos los campos opcionales.
  */
 export const updateOrderSchema = createOrderSchema.partial();
+
+/**
+ * Schema exclusivo para cambiar el estado de un pedido.
+ * Se usa en el endpoint PATCH /orders/:id/status, solo accesible por admins.
+ * La lógica de transiciones válidas se valida en el service, no aquí,
+ * porque depende del estado actual del pedido (dato de la BD).
+ */
+export const updateOrderStatusSchema = z.object({
+    status: z.enum(
+        ['pending', 'processing', 'shipped', 'delivered', 'cancelled'],
+        {
+            error: 'Status must be one of: pending, processing, shipped, delivered, cancelled',
+        },
+    ),
+});

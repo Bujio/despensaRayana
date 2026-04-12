@@ -23,7 +23,35 @@ const ProductsOrderSchema = new Schema({
     },
 });
 
+// Estados posibles de un pedido y las transiciones permitidas entre ellos:
+//
+//   pending → processing → shipped → delivered
+//       └──────────────────────────→ cancelled
+//
+// Un pedido cancelado o entregado es un estado final: no puede cambiar.
+const ORDER_STATUSES = [
+    'pending',
+    'processing',
+    'shipped',
+    'delivered',
+    'cancelled',
+];
+
+export const VALID_TRANSITIONS = {
+    pending: ['processing', 'cancelled'],
+    processing: ['shipped', 'cancelled'],
+    shipped: ['delivered'],
+    delivered: [],
+    cancelled: [],
+};
+
 const OrderSchema = new Schema({
+    // Estado actual del pedido. Por defecto 'pending' al crearse.
+    status: {
+        type: String,
+        enum: ORDER_STATUSES,
+        default: 'pending',
+    },
     date: {
         type: Date,
     },
