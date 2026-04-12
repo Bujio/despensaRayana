@@ -7,6 +7,7 @@ const ProductsOrderSchema = new Schema({
     },
     count: {
         type: Number,
+        default: 1,
     },
     price: {
         type: Number,
