@@ -4,6 +4,7 @@ import {
     updateUserService,
     deleteUserService,
 } from '../services/users.js';
+import { getPagination, buildPaginationMeta } from '../utils/pagination.js';
 
 export const usersController = () => {
     const isOwnerOrAdmin = (targetId, req, res) => {
@@ -28,8 +29,16 @@ export const usersController = () => {
 
     const listUsers = async (req, res, next) => {
         try {
-            const users = await listUsersService();
-            return res.status(200).json(users);
+            const pagination = getPagination(req.query);
+            const { data, total } = await listUsersService(pagination);
+            return res.status(200).json({
+                data,
+                pagination: buildPaginationMeta(
+                    total,
+                    pagination.page,
+                    pagination.limit,
+                ),
+            });
         } catch (error) {
             next(error);
         }
@@ -39,11 +48,9 @@ export const usersController = () => {
         try {
             if (!isOwnerOrAdmin(req.params.id, req, res)) return;
             if (req.body.role && req.user.role !== 'admin') {
-                return res
-                    .status(403)
-                    .json({
-                        message: 'Forbidden: only admins can change roles',
-                    });
+                return res.status(403).json({
+                    message: 'Forbidden: only admins can change roles',
+                });
             }
             const user = await updateUserService(req.params.id, req.body);
             if (!user)

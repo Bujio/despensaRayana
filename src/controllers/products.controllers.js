@@ -5,6 +5,7 @@ import {
     updateProductService,
     deleteProductService,
 } from '../services/products.js';
+import { getPagination, buildPaginationMeta } from '../utils/pagination.js';
 
 export const productsController = () => {
     const getProduct = async (req, res, next) => {
@@ -20,8 +21,16 @@ export const productsController = () => {
 
     const listProducts = async (req, res, next) => {
         try {
-            const products = await listProductsService();
-            return res.status(200).json(products);
+            const pagination = getPagination(req.query);
+            const { data, total } = await listProductsService(pagination);
+            return res.status(200).json({
+                data,
+                pagination: buildPaginationMeta(
+                    total,
+                    pagination.page,
+                    pagination.limit,
+                ),
+            });
         } catch (error) {
             next(error);
         }

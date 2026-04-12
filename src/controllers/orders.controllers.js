@@ -7,6 +7,7 @@ import {
     updateOrderStatusService,
     deleteOrderService,
 } from '../services/orders.js';
+import { getPagination, buildPaginationMeta } from '../utils/pagination.js';
 
 export const ordersController = () => {
     const isOwnerOrAdmin = (orderEmail, req, res) => {
@@ -32,8 +33,16 @@ export const ordersController = () => {
 
     const listOrders = async (req, res, next) => {
         try {
-            const orders = await listOrdersService();
-            return res.status(200).json(orders);
+            const pagination = getPagination(req.query);
+            const { data, total } = await listOrdersService(pagination);
+            return res.status(200).json({
+                data,
+                pagination: buildPaginationMeta(
+                    total,
+                    pagination.page,
+                    pagination.limit,
+                ),
+            });
         } catch (error) {
             next(error);
         }
@@ -42,8 +51,19 @@ export const ordersController = () => {
     const listOrdersByEmail = async (req, res, next) => {
         try {
             if (!isOwnerOrAdmin(req.params.email, req, res)) return;
-            const orders = await listOrdersByEmailService(req.params.email);
-            return res.status(200).json(orders);
+            const pagination = getPagination(req.query);
+            const { data, total } = await listOrdersByEmailService(
+                req.params.email,
+                pagination,
+            );
+            return res.status(200).json({
+                data,
+                pagination: buildPaginationMeta(
+                    total,
+                    pagination.page,
+                    pagination.limit,
+                ),
+            });
         } catch (error) {
             next(error);
         }

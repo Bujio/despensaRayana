@@ -11,12 +11,18 @@ export const getProductService = async (id) => {
 };
 
 /**
- * Devuelve todos los productos del catálogo.
+ * Devuelve una página de productos del catálogo.
  *
- * @returns {Promise<Product[]>} Lista de productos
+ * @param {{ skip: number, limit: number }} pagination - Parámetros de paginación
+ * @returns {Promise<{ data: Product[], total: number }>}
  */
-export const listProductsService = async () => {
-    return await Product.find();
+export const listProductsService = async ({ skip, limit }) => {
+    // Ejecutamos ambas queries en paralelo para no hacer esperar una a la otra
+    const [data, total] = await Promise.all([
+        Product.find().skip(skip).limit(limit),
+        Product.countDocuments(),
+    ]);
+    return { data, total };
 };
 
 /**

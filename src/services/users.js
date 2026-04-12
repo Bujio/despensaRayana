@@ -13,13 +13,18 @@ export const getUserService = async (id) => {
 };
 
 /**
- * Devuelve todos los usuarios registrados.
+ * Devuelve una página de usuarios registrados.
  * Excluye el campo password de todos los documentos.
  *
- * @returns {Promise<User[]>} Lista de usuarios
+ * @param {{ skip: number, limit: number }} pagination - Parámetros de paginación
+ * @returns {Promise<{ data: User[], total: number }>}
  */
-export const listUsersService = async () => {
-    return await User.find().select('-password');
+export const listUsersService = async ({ skip, limit }) => {
+    const [data, total] = await Promise.all([
+        User.find().select('-password').skip(skip).limit(limit),
+        User.countDocuments(),
+    ]);
+    return { data, total };
 };
 
 /**

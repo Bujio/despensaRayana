@@ -48,23 +48,33 @@ export const getOrderService = async (id) => {
 };
 
 /**
- * Devuelve todos los pedidos registrados.
+ * Devuelve una página de todos los pedidos registrados.
  * Solo debe usarse en rutas protegidas por rol admin.
  *
- * @returns {Promise<Order[]>} Lista de todos los pedidos
+ * @param {{ skip: number, limit: number }} pagination - Parámetros de paginación
+ * @returns {Promise<{ data: Order[], total: number }>}
  */
-export const listOrdersService = async () => {
-    return await Order.find();
+export const listOrdersService = async ({ skip, limit }) => {
+    const [data, total] = await Promise.all([
+        Order.find().skip(skip).limit(limit),
+        Order.countDocuments(),
+    ]);
+    return { data, total };
 };
 
 /**
- * Devuelve todos los pedidos asociados a un email de cliente.
+ * Devuelve una página de pedidos asociados a un email de cliente.
  *
  * @param {string} email - Email del cliente
- * @returns {Promise<Order[]>} Lista de pedidos del cliente
+ * @param {{ skip: number, limit: number }} pagination - Parámetros de paginación
+ * @returns {Promise<{ data: Order[], total: number }>}
  */
-export const listOrdersByEmailService = async (email) => {
-    return await Order.find({ email });
+export const listOrdersByEmailService = async (email, { skip, limit }) => {
+    const [data, total] = await Promise.all([
+        Order.find({ email }).skip(skip).limit(limit),
+        Order.countDocuments({ email }),
+    ]);
+    return { data, total };
 };
 
 /**
