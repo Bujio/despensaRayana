@@ -3,6 +3,7 @@ import { ordersController } from '../controllers/orders.controllers.js';
 import { authMiddleware } from '../middlewares/auth.middleware.js';
 import { roleMiddleware } from '../middlewares/role.middleware.js';
 import { validate } from '../middlewares/validate.middleware.js';
+import { validateObjectId } from '../middlewares/objectid.middleware.js';
 import {
     createOrderSchema,
     updateOrderSchema,
@@ -25,7 +26,7 @@ export const ordersRouter = Router();
 ordersRouter.get('/', authMiddleware, roleMiddleware('admin'), listOrders);
 // El usuario solo puede ver sus propios pedidos (verificado en el controller)
 ordersRouter.get('/client/:email', authMiddleware, listOrdersByEmail);
-ordersRouter.get('/:id', authMiddleware, getOrder);
+ordersRouter.get('/:id', validateObjectId, authMiddleware, getOrder);
 ordersRouter.post(
     '/',
     authMiddleware,
@@ -34,6 +35,7 @@ ordersRouter.post(
 );
 ordersRouter.patch(
     '/:id',
+    validateObjectId,
     authMiddleware,
     validate(updateOrderSchema),
     updateOrder,
@@ -41,6 +43,7 @@ ordersRouter.patch(
 // Solo el admin puede cambiar el estado de un pedido
 ordersRouter.patch(
     '/:id/status',
+    validateObjectId,
     authMiddleware,
     roleMiddleware('admin'),
     validate(updateOrderStatusSchema),
@@ -49,6 +52,7 @@ ordersRouter.patch(
 // Solo el admin puede eliminar pedidos
 ordersRouter.delete(
     '/:id',
+    validateObjectId,
     authMiddleware,
     roleMiddleware('admin'),
     deleteOrder,

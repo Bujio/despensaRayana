@@ -4,6 +4,7 @@ import { authMiddleware } from '../middlewares/auth.middleware.js';
 import { roleMiddleware } from '../middlewares/role.middleware.js';
 import { validate } from '../middlewares/validate.middleware.js';
 import { upload } from '../middlewares/upload.middleware.js';
+import { validateObjectId } from '../middlewares/objectid.middleware.js';
 import {
     createProductSchema,
     updateProductSchema,
@@ -22,7 +23,7 @@ export const productsRouter = Router();
 
 // Lectura pública: cualquier visitante puede ver el catálogo sin autenticarse
 productsRouter.get('/', listProducts);
-productsRouter.get('/:id', getProduct);
+productsRouter.get('/:id', validateObjectId, getProduct);
 
 // Escritura restringida a admins
 productsRouter.post(
@@ -34,6 +35,7 @@ productsRouter.post(
 );
 productsRouter.patch(
     '/:id',
+    validateObjectId,
     authMiddleware,
     roleMiddleware('admin'),
     validate(updateProductSchema),
@@ -41,6 +43,7 @@ productsRouter.patch(
 );
 productsRouter.delete(
     '/:id',
+    validateObjectId,
     authMiddleware,
     roleMiddleware('admin'),
     deleteProduct,
@@ -49,6 +52,7 @@ productsRouter.delete(
 // Subida de imágenes: multipart/form-data, campo "images" (máx. 5 archivos)
 productsRouter.post(
     '/:id/images',
+    validateObjectId,
     authMiddleware,
     roleMiddleware('admin'),
     upload,
