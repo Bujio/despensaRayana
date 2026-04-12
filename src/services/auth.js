@@ -18,7 +18,9 @@ export const registerService = async ({ name, password, email, phone }) => {
         email,
         phone,
     });
-    return newUser;
+    // Nunca devolvemos el hash al cliente
+    const { password: _, ...safeUser } = newUser.toObject();
+    return safeUser;
 };
 
 /**
