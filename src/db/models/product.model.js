@@ -56,4 +56,7 @@ const ProductSchema = new mongoose.Schema(
     },
 );
 
+// Índice sobre category para acelerar el filtrado del catálogo por categoría.
+ProductSchema.index({ category: 1 });
+
 export const Product = mongoose.model('Product', ProductSchema);

@@ -78,4 +78,8 @@ const OrderSchema = new Schema(
     { timestamps: true },
 );
 
+// Índice sobre email: las consultas por email (listOrdersByEmail) son frecuentes
+// y sin índice harían un COLLSCAN al crecer la colección.
+OrderSchema.index({ email: 1 });
+
 export const Order = mongoose.model('Order', OrderSchema);
