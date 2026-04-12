@@ -18,8 +18,9 @@ app.use(
 );
 // Parsea el body de las peticiones JSON y lo deja disponible en req.body
 app.use(express.json());
-// morgan registra cada petición en consola (método, ruta, status, tiempo)
-app.use(morgan('dev'));
+// morgan registra cada petición en consola.
+// 'dev' en desarrollo (colorido y conciso); 'combined' en producción (Apache format, más detallado).
+app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
 
 // Todas las rutas de la API están bajo el prefijo /api
 app.use('/api', router);
