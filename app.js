@@ -8,8 +8,14 @@ const app = express();
 
 // helmet añade cabeceras HTTP de seguridad (X-Frame-Options, CSP, etc.)
 app.use(helmet());
-// cors permite peticiones desde otros dominios (necesario para el frontend)
-app.use(cors());
+// cors permite peticiones solo desde el origen del frontend.
+// CORS_ORIGIN debe definirse en .env; si no existe se bloquea todo por defecto.
+app.use(
+    cors({
+        origin: process.env.CORS_ORIGIN || false,
+        credentials: true,
+    }),
+);
 // Parsea el body de las peticiones JSON y lo deja disponible en req.body
 app.use(express.json());
 // morgan registra cada petición en consola (método, ruta, status, tiempo)
