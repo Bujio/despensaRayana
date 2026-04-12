@@ -3,36 +3,50 @@ import { Product } from '../db/models/product.model.js';
 import { sendOrderConfirmationEmail, sendOrderStatusEmail } from './email.js';
 
 /**
- * Verifica que todos los productos del pedido tienen stock suficiente
- * y devuelve los documentos de cada producto para no consultarlos dos veces.
+ * Decrementa el stock de cada producto de forma atómica y condicional.
+ * La query `{ sku, stock: { $gte: count } }` garantiza que el documento
+ * solo se actualiza si hay stock suficiente en el momento exacto del update,
+ * evitando la race condition entre "comprobar" y "decrementar".
+ *
+ * Si algún producto no existe o no tiene stock suficiente, se revierte
+ * el decremento de los productos ya actualizados para dejar el stock consistente.
  *
  * @param {Array<{ sku, count }>} products - Líneas de producto del pedido
- * @returns {Promise<Map<string, Product>>} Mapa SKU → documento de producto
- * @throws {Error} Si algún producto no existe o no tiene stock suficiente
+ * @throws {Error} 404 si algún SKU no existe, 400 si no hay stock
  */
-const checkAndFetchStock = async (products) => {
-    // Lanzamos todas las queries en paralelo en lugar de una por una
-    await Promise.all(
-        products.map(async ({ sku, count = 1 }) => {
-            const product = await Product.findOne({ sku });
+const decrementStockAtomic = async (products) => {
+    const applied = [];
 
-            if (!product) {
+    for (const { sku, count = 1 } of products) {
+        const result = await Product.updateOne(
+            { sku, stock: { $gte: count } },
+            { $inc: { stock: -count } },
+        );
+
+        if (result.matchedCount === 0) {
+            // Revertimos los decrementos previos antes de lanzar el error
+            await Promise.all(
+                applied.map(({ sku: s, count: c }) =>
+                    Product.updateOne({ sku: s }, { $inc: { stock: c } }),
+                ),
+            );
+
+            // Distinguimos entre "no existe" y "sin stock" para devolver el código correcto
+            const exists = await Product.exists({ sku });
+            if (!exists) {
                 throw Object.assign(
                     new Error(`Product with SKU "${sku}" not found`),
                     { status: 404 },
                 );
             }
+            throw Object.assign(
+                new Error(`Insufficient stock for SKU "${sku}"`),
+                { status: 400 },
+            );
+        }
 
-            if (product.stock < count) {
-                throw Object.assign(
-                    new Error(
-                        `Insufficient stock for SKU "${sku}": available ${product.stock}, requested ${count}`,
-                    ),
-                    { status: 400 },
-                );
-            }
-        }),
-    );
+        applied.push({ sku, count });
+    }
 };
 
 /**
@@ -91,20 +105,26 @@ export const listOrdersByEmailService = async (email, { skip, limit }) => {
  * @throws {Error} Si algún producto no existe o no tiene stock suficiente
  */
 export const createOrderService = async (data) => {
-    // Paso 1: verificamos stock de todos los productos antes de crear nada
-    await checkAndFetchStock(data.products);
+    // Paso 1: decrementamos el stock de forma atómica y condicional.
+    // Si algún producto no tiene stock, se revierten los decrementos previos
+    // y se lanza un error antes de crear el pedido.
+    await decrementStockAtomic(data.products);
 
-    // Paso 2: creamos el pedido
-    const order = await Order.create(data);
+    // Paso 2: creamos el pedido. Si Order.create() falla por cualquier razón,
+    // revertimos el stock para no dejar datos inconsistentes.
+    let order;
+    try {
+        order = await Order.create(data);
+    } catch (err) {
+        await Promise.all(
+            data.products.map(({ sku, count = 1 }) =>
+                Product.updateOne({ sku }, { $inc: { stock: count } }),
+            ),
+        );
+        throw err;
+    }
 
-    // Paso 3: descontamos stock usando $inc (operación atómica por documento)
-    await Promise.all(
-        data.products.map(({ sku, count = 1 }) =>
-            Product.updateOne({ sku }, { $inc: { stock: -count } }),
-        ),
-    );
-
-    // Paso 4: enviamos email de confirmación (no bloqueante — si falla no afecta al pedido)
+    // Paso 3: enviamos email de confirmación (no bloqueante — si falla no afecta al pedido)
     sendOrderConfirmationEmail(order).catch((err) =>
         console.error('Failed to send order confirmation email:', err.message),
     );
