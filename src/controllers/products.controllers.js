@@ -22,7 +22,11 @@ export const productsController = () => {
     const listProducts = async (req, res, next) => {
         try {
             const pagination = getPagination(req.query);
-            const { data, total } = await listProductsService(pagination);
+            // categoryId es opcional: GET /api/products?categoryId=<id>
+            const { data, total } = await listProductsService(
+                pagination,
+                req.query.categoryId,
+            );
             return res.status(200).json({
                 data,
                 pagination: buildPaginationMeta(

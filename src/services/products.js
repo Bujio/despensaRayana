@@ -1,26 +1,32 @@
 import { Product } from '../db/models/product.model.js';
 
 /**
- * Obtiene un producto por su ID.
+ * Obtiene un producto por su ID, poblando el nombre y slug de su categoría.
  *
  * @param {string} id - ID de MongoDB del producto
  * @returns {Promise<Product|null>} El producto encontrado o null si no existe
  */
 export const getProductService = async (id) => {
-    return await Product.findById(id);
+    return await Product.findById(id).populate('category', 'name slug');
 };
 
 /**
  * Devuelve una página de productos del catálogo.
+ * Soporta filtrado opcional por categoryId.
  *
  * @param {{ skip: number, limit: number }} pagination - Parámetros de paginación
+ * @param {string} [categoryId] - ID de categoría para filtrar (opcional)
  * @returns {Promise<{ data: Product[], total: number }>}
  */
-export const listProductsService = async ({ skip, limit }) => {
+export const listProductsService = async ({ skip, limit }, categoryId) => {
+    const filter = categoryId ? { category: categoryId } : {};
     // Ejecutamos ambas queries en paralelo para no hacer esperar una a la otra
     const [data, total] = await Promise.all([
-        Product.find().skip(skip).limit(limit),
-        Product.countDocuments(),
+        Product.find(filter)
+            .populate('category', 'name slug')
+            .skip(skip)
+            .limit(limit),
+        Product.countDocuments(filter),
     ]);
     return { data, total };
 };

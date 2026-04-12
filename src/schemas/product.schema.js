@@ -37,6 +37,8 @@ export const createProductSchema = z.object({
         .number({ required_error: 'Price is required' })
         .positive('Price must be a positive number'),
     description: z.string().optional(),
+    // ID de MongoDB de la categoría. Opcional al crear un producto.
+    categoryId: z.string().optional(),
     stock: z
         .number({ required_error: 'Stock is required' })
         .int('Stock must be an integer')

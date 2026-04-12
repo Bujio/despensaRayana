@@ -1,4 +1,4 @@
-import mongoose from 'mongoose';
+import mongoose, { Schema } from 'mongoose';
 
 const ImagesSchema = new mongoose.Schema({
     url: {
@@ -34,6 +34,12 @@ const ProductSchema = new mongoose.Schema(
             required: [true, 'You must indicate the stock of the product'],
             min: [0, 'Stock cannot be negative'],
             default: 0,
+        },
+        // Referencia a la categoría del producto. Opcional para no romper
+        // productos existentes. Se puebla con .populate() en las consultas.
+        category: {
+            type: Schema.Types.ObjectId,
+            ref: 'Category',
         },
         supplier: {
             id: {
