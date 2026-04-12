@@ -45,33 +45,36 @@ export const VALID_TRANSITIONS = {
     cancelled: [],
 };
 
-const OrderSchema = new Schema({
-    // Estado actual del pedido. Por defecto 'pending' al crearse.
-    status: {
-        type: String,
-        enum: ORDER_STATUSES,
-        default: 'pending',
+const OrderSchema = new Schema(
+    {
+        // Estado actual del pedido. Por defecto 'pending' al crearse.
+        status: {
+            type: String,
+            enum: ORDER_STATUSES,
+            default: 'pending',
+        },
+        date: {
+            type: Date,
+        },
+        email: {
+            type: String,
+            required: [true, 'Debe indicar un email válido'],
+            lowercase: true,
+            trim: true,
+            match: [
+                /^\w+([\.-]?\w+)*@\w+([\.-]?\w+)*(\.\w{2,3})+$/,
+                'Debe indicar un email válido',
+            ],
+        },
+        products: [ProductsOrderSchema],
+        discount: {
+            type: Number,
+        },
+        total: {
+            type: Number,
+        },
     },
-    date: {
-        type: Date,
-    },
-    email: {
-        type: String,
-        required: [true, 'Debe indicar un email válido'],
-        lowercase: true,
-        trim: true,
-        match: [
-            /^\w+([\.-]?\w+)*@\w+([\.-]?\w+)*(\.\w{2,3})+$/,
-            'Debe indicar un email válido',
-        ],
-    },
-    products: [ProductsOrderSchema],
-    discount: {
-        type: Number,
-    },
-    total: {
-        type: Number,
-    },
-});
+    { timestamps: true },
+);
 
 export const Order = mongoose.model('Order', OrderSchema);
