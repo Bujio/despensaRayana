@@ -36,11 +36,13 @@ export const listUsersService = async ({ skip, limit }) => {
  * @returns {Promise<User|null>} El usuario actualizado sin password, o null si no existe
  */
 export const updateUserService = async (id, data) => {
-    // Si el cliente envía una nueva contraseña, la hasheamos antes de guardarla
-    if (data.password) {
-        data.password = await bcrypt.hash(data.password, 10);
+    // Construimos un nuevo objeto en lugar de mutar el `data` recibido,
+    // para no modificar el req.body del caller.
+    const update = { ...data };
+    if (update.password) {
+        update.password = await bcrypt.hash(update.password, 10);
     }
-    return await User.findByIdAndUpdate(id, data, {
+    return await User.findByIdAndUpdate(id, update, {
         new: true, // devuelve el documento actualizado, no el original
         runValidators: true, // aplica las validaciones del schema de Mongoose
     }).select('-password');
