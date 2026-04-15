@@ -2,9 +2,16 @@ import { Router } from 'express';
 import { rateLimit } from 'express-rate-limit';
 import { authController } from '../controllers/auth.controllers.js';
 import { validate } from '../middlewares/validate.middleware.js';
-import { registerSchema, loginSchema } from '../schemas/user.schema.js';
+import { skipInTest } from '../middlewares/ratelimit.middleware.js';
+import {
+    registerSchema,
+    loginSchema,
+    refreshTokenSchema,
+    resendVerificationSchema,
+} from '../schemas/user.schema.js';
 
-const { register, login } = authController();
+const { register, login, refresh, logout, verifyEmail, resendVerification } =
+    authController();
 
 /**
  * Limita los intentos de login a 10 por IP cada 15 minutos.
@@ -18,6 +25,7 @@ const loginLimiter = rateLimit({
     },
     standardHeaders: 'draft-8', // incluye RateLimit headers en la respuesta
     legacyHeaders: false,
+    skip: skipInTest,
 });
 
 /**
@@ -33,16 +41,172 @@ const registerLimiter = rateLimit({
     },
     standardHeaders: 'draft-8',
     legacyHeaders: false,
+    skip: skipInTest,
+});
+
+/**
+ * Rate limit estricto para reenvíos de verificación: 3 cada hora por IP.
+ * Evita usar el endpoint como vector de spam de emails.
+ */
+const resendLimiter = rateLimit({
+    windowMs: 60 * 60 * 1000,
+    limit: 3,
+    message: { message: 'Too many requests, please try again later' },
+    standardHeaders: 'draft-8',
+    legacyHeaders: false,
+    skip: skipInTest,
 });
 
 export const authRouter = Router();
 
-// validate(schema) intercepta el body antes de llegar al controller.
-// Si no cumple el schema, devuelve 400 sin ejecutar el controller.
+/**
+ * @openapi
+ * tags:
+ *   name: Auth
+ *   description: Registro, login y gestión de sesión
+ */
+
+/**
+ * @openapi
+ * /auth/register:
+ *   post:
+ *     tags: [Auth]
+ *     summary: Registra un nuevo usuario y envía el email de verificación
+ *     security: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/RegisterInput'
+ *     responses:
+ *       201:
+ *         description: Usuario creado
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/User'
+ *       400: { description: Validación fallida }
+ *       409: { description: Email ya registrado }
+ *       429: { description: Demasiados registros desde esta IP }
+ */
 authRouter.post(
     '/register',
     registerLimiter,
     validate(registerSchema),
     register,
 );
+
+/**
+ * @openapi
+ * /auth/login:
+ *   post:
+ *     tags: [Auth]
+ *     summary: Autentica credenciales y devuelve access + refresh token
+ *     security: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/LoginInput'
+ *     responses:
+ *       200:
+ *         description: Tokens emitidos
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/AuthResponse'
+ *       401: { description: Credenciales inválidas }
+ *       429: { description: Demasiados intentos de login }
+ */
 authRouter.post('/login', loginLimiter, validate(loginSchema), login);
+
+/**
+ * @openapi
+ * /auth/refresh:
+ *   post:
+ *     tags: [Auth]
+ *     summary: Rota el refresh token y emite un nuevo par access+refresh
+ *     security: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [refreshToken]
+ *             properties:
+ *               refreshToken: { type: string }
+ *     responses:
+ *       200:
+ *         description: Nuevo par de tokens
+ *       401: { description: Refresh token inválido, expirado o reutilizado }
+ */
+authRouter.post('/refresh', validate(refreshTokenSchema), refresh);
+
+/**
+ * @openapi
+ * /auth/logout:
+ *   post:
+ *     tags: [Auth]
+ *     summary: Revoca el refresh token recibido (logout de ese dispositivo)
+ *     security: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [refreshToken]
+ *             properties:
+ *               refreshToken: { type: string }
+ *     responses:
+ *       204: { description: Logout exitoso }
+ */
+authRouter.post('/logout', validate(refreshTokenSchema), logout);
+
+/**
+ * @openapi
+ * /auth/verify/{token}:
+ *   get:
+ *     tags: [Auth]
+ *     summary: Confirma el email a partir del token del enlace
+ *     security: []
+ *     parameters:
+ *       - in: path
+ *         name: token
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200: { description: Email verificado }
+ *       400: { description: Token inválido o expirado }
+ */
+authRouter.get('/verify/:token', verifyEmail);
+
+/**
+ * @openapi
+ * /auth/resend-verification:
+ *   post:
+ *     tags: [Auth]
+ *     summary: Reenvía el email de verificación al email indicado
+ *     security: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [email]
+ *             properties:
+ *               email: { type: string, format: email }
+ *     responses:
+ *       200: { description: Respuesta genérica (no revela si el email existe) }
+ *       429: { description: Demasiados reenvíos }
+ */
+authRouter.post(
+    '/resend-verification',
+    resendLimiter,
+    validate(resendVerificationSchema),
+    resendVerification,
+);

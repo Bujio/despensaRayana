@@ -49,11 +49,17 @@ export const updateUserService = async (id, data) => {
 };
 
 /**
- * Elimina un usuario por su ID.
+ * Marca un usuario como borrado (soft delete).
+ * El documento permanece en la BD con `deletedAt` fijado pero deja de
+ * aparecer en las queries normales. Para casos de GDPR / derecho al olvido
+ * habría que hacer un hard delete real en una tarea separada.
  *
  * @param {string} id - ID de MongoDB del usuario
- * @returns {Promise<User|null>} El usuario eliminado o null si no existía
+ * @returns {Promise<User|null>} El usuario borrado o null si no existía
  */
 export const deleteUserService = async (id) => {
-    return await User.findByIdAndDelete(id);
+    const user = await User.findById(id);
+    if (!user) return null;
+    await user.softDelete();
+    return user;
 };

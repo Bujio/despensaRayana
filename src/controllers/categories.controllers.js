@@ -5,6 +5,7 @@ import {
     updateCategoryService,
     deleteCategoryService,
 } from '../services/categories.js';
+import { HttpError } from '../utils/http-error.js';
 
 export const categoriesController = () => {
     const listCategories = async (req, res, next) => {
@@ -19,8 +20,7 @@ export const categoriesController = () => {
     const getCategory = async (req, res, next) => {
         try {
             const category = await getCategoryService(req.params.id);
-            if (!category)
-                return res.status(404).json({ message: 'Category not found' });
+            if (!category) throw new HttpError('Category not found', 404);
             return res.status(200).json(category);
         } catch (error) {
             next(error);
@@ -42,8 +42,7 @@ export const categoriesController = () => {
                 req.params.id,
                 req.body,
             );
-            if (!category)
-                return res.status(404).json({ message: 'Category not found' });
+            if (!category) throw new HttpError('Category not found', 404);
             return res.status(200).json(category);
         } catch (error) {
             next(error);
@@ -53,8 +52,7 @@ export const categoriesController = () => {
     const deleteCategory = async (req, res, next) => {
         try {
             const category = await deleteCategoryService(req.params.id);
-            if (!category)
-                return res.status(404).json({ message: 'Category not found' });
+            if (!category) throw new HttpError('Category not found', 404);
             return res
                 .status(200)
                 .json({ message: 'Category deleted successfully' });

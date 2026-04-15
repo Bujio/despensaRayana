@@ -1,33 +1,36 @@
 import { Cart } from '../db/models/cart.model.js';
 import { Product } from '../db/models/product.model.js';
+import { HttpError } from '../utils/http-error.js';
 
 /**
- * Busca el producto por SKU y verifica que tiene stock suficiente.
+ * Obtiene el producto por SKU o lanza 404.
  *
  * @param {string} sku
- * @param {number} quantity
- * @returns {Promise<Product>} El producto encontrado
- * @throws {Error} Si no existe o no hay stock
+ * @returns {Promise<Product>}
  */
-const validateStock = async (sku, quantity) => {
+const findProductOr404 = async (sku) => {
     const product = await Product.findOne({ sku });
-
     if (!product) {
-        throw Object.assign(new Error(`Product with SKU "${sku}" not found`), {
-            status: 404,
-        });
+        throw new HttpError(`Product with SKU "${sku}" not found`, 404);
     }
+    return product;
+};
 
-    if (product.stock < quantity) {
-        throw Object.assign(
-            new Error(
-                `Insufficient stock for SKU "${sku}": available ${product.stock}, requested ${quantity}`,
-            ),
-            { status: 400 },
+/**
+ * Lanza 400 si la cantidad solicitada excede el stock disponible.
+ *
+ * Nota: el carrito es un "quiero comprar esto", no una reserva.
+ * La garantía real de stock se aplica al crear el pedido
+ * (ver `decrementStockAtomic` en orders.js). Esta validación es
+ * best-effort para no dejar añadir cantidades sin sentido al carrito.
+ */
+const assertEnoughStock = (product, requestedQty) => {
+    if (product.stock < requestedQty) {
+        throw new HttpError(
+            `Insufficient stock for SKU "${product.sku}": available ${product.stock}, requested ${requestedQty}`,
+            400,
         );
     }
-
-    return product;
 };
 
 /**
@@ -47,36 +50,52 @@ export const getCartService = async (userId) => {
  * Si el producto ya está en el carrito, suma la cantidad.
  * Si el carrito no existe, lo crea (upsert).
  *
+ * Usamos operaciones atómicas ($inc / $push) con filtros posicionales para
+ * minimizar la ventana de race condition entre dos peticiones concurrentes
+ * del mismo usuario (por ejemplo, doble click en "Añadir al carrito").
+ *
  * @param {string} userId
  * @param {string} sku
  * @param {number} quantity
  * @returns {Promise<Cart>} El carrito actualizado
  */
 export const addCartItemService = async (userId, sku, quantity) => {
-    const product = await validateStock(sku, quantity);
+    const product = await findProductOr404(sku);
 
-    const cart = await Cart.findOne({ userId });
+    // Intentamos incrementar atómicamente la cantidad si el item ya está en el
+    // carrito. Si matchedCount es 0 significa que no había línea con ese SKU.
+    const incResult = await Cart.updateOne(
+        { userId, 'items.sku': sku },
+        { $inc: { 'items.$.quantity': quantity } },
+    );
 
-    if (!cart) {
-        // Primer producto: creamos el carrito
-        return await Cart.create({
-            userId,
-            items: [{ sku, quantity, price: product.price }],
-        });
+    if (incResult.matchedCount > 0) {
+        // Releemos el carrito para validar que la nueva cantidad no excede stock.
+        // Si se pasa, revertimos el $inc para dejarlo como estaba.
+        const updated = await Cart.findOne({ userId });
+        const item = updated.items.find((i) => i.sku === sku);
+        if (item.quantity > product.stock) {
+            await Cart.updateOne(
+                { userId, 'items.sku': sku },
+                { $inc: { 'items.$.quantity': -quantity } },
+            );
+            throw new HttpError(
+                `Insufficient stock for SKU "${sku}": available ${product.stock}, requested ${item.quantity}`,
+                400,
+            );
+        }
+        return updated;
     }
 
-    const existingItem = cart.items.find((item) => item.sku === sku);
-
-    if (existingItem) {
-        // El producto ya está en el carrito: verificamos stock total y sumamos
-        await validateStock(sku, existingItem.quantity + quantity);
-        existingItem.quantity += quantity;
-    } else {
-        // Producto nuevo en el carrito
-        cart.items.push({ sku, quantity, price: product.price });
-    }
-
-    return await cart.save();
+    // No existía la línea: validamos stock y añadimos el item con $push.
+    // upsert: true crea el carrito si el usuario no tenía aún.
+    // `returnDocument: 'after'` es el reemplazo moderno de `new: true` en Mongoose 9.
+    assertEnoughStock(product, quantity);
+    return await Cart.findOneAndUpdate(
+        { userId },
+        { $push: { items: { sku, quantity, price: product.price } } },
+        { returnDocument: 'after', upsert: true },
+    );
 };
 
 /**
@@ -86,27 +105,28 @@ export const addCartItemService = async (userId, sku, quantity) => {
  * @param {string} sku
  * @param {number} quantity - Nueva cantidad (debe ser >= 1)
  * @returns {Promise<Cart>} El carrito actualizado
- * @throws {Error} Si el carrito o el producto no existen en él
+ * @throws {HttpError} Si el carrito o el producto no existen en él, o no hay stock
  */
 export const updateCartItemService = async (userId, sku, quantity) => {
-    const cart = await Cart.findOne({ userId });
-    if (!cart) {
-        throw Object.assign(new Error('Cart not found'), { status: 404 });
+    const product = await findProductOr404(sku);
+    assertEnoughStock(product, quantity);
+
+    // $set atómico sobre la línea concreta; el filtro 'items.sku' garantiza
+    // que la operación solo actualiza si el SKU está presente en el carrito.
+    const updated = await Cart.findOneAndUpdate(
+        { userId, 'items.sku': sku },
+        { $set: { 'items.$.quantity': quantity } },
+        { returnDocument: 'after' },
+    );
+
+    if (!updated) {
+        // Distinguimos entre "no hay carrito" y "no hay ese SKU en el carrito"
+        const cart = await Cart.findOne({ userId });
+        if (!cart) throw new HttpError('Cart not found', 404);
+        throw new HttpError(`Item with SKU "${sku}" not found in cart`, 404);
     }
 
-    const item = cart.items.find((i) => i.sku === sku);
-    if (!item) {
-        throw Object.assign(
-            new Error(`Item with SKU "${sku}" not found in cart`),
-            { status: 404 },
-        );
-    }
-
-    // Verificamos que hay stock suficiente para la nueva cantidad
-    await validateStock(sku, quantity);
-    item.quantity = quantity;
-
-    return await cart.save();
+    return updated;
 };
 
 /**
@@ -115,18 +135,17 @@ export const updateCartItemService = async (userId, sku, quantity) => {
  * @param {string} userId
  * @param {string} sku
  * @returns {Promise<Cart>} El carrito actualizado
- * @throws {Error} Si el carrito no existe
+ * @throws {HttpError} Si el carrito no existe
  */
 export const removeCartItemService = async (userId, sku) => {
-    const cart = await Cart.findOne({ userId });
-    if (!cart) {
-        throw Object.assign(new Error('Cart not found'), { status: 404 });
-    }
-
-    // $pull elimina del array todos los elementos que coincidan con el filtro
-    cart.items = cart.items.filter((item) => item.sku !== sku);
-
-    return await cart.save();
+    // $pull elimina atómicamente del array cualquier línea con ese SKU
+    const updated = await Cart.findOneAndUpdate(
+        { userId },
+        { $pull: { items: { sku } } },
+        { returnDocument: 'after' },
+    );
+    if (!updated) throw new HttpError('Cart not found', 404);
+    return updated;
 };
 
 /**
@@ -135,14 +154,14 @@ export const removeCartItemService = async (userId, sku) => {
  *
  * @param {string} userId
  * @returns {Promise<Cart>} El carrito vacío
- * @throws {Error} Si el carrito no existe
+ * @throws {HttpError} Si el carrito no existe
  */
 export const clearCartService = async (userId) => {
-    const cart = await Cart.findOne({ userId });
-    if (!cart) {
-        throw Object.assign(new Error('Cart not found'), { status: 404 });
-    }
-
-    cart.items = [];
-    return await cart.save();
+    const updated = await Cart.findOneAndUpdate(
+        { userId },
+        { $set: { items: [] } },
+        { returnDocument: 'after' },
+    );
+    if (!updated) throw new HttpError('Cart not found', 404);
+    return updated;
 };

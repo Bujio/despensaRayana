@@ -1,4 +1,5 @@
 import mongoose, { Schema } from 'mongoose';
+import { softDeletePlugin } from '../plugins/soft-delete.js';
 
 const ImagesSchema = new mongoose.Schema({
     url: {
@@ -58,5 +59,9 @@ const ProductSchema = new mongoose.Schema(
 
 // Índice sobre category para acelerar el filtrado del catálogo por categoría.
 ProductSchema.index({ category: 1 });
+// Índice de texto para búsqueda full-text sobre nombre y descripción.
+ProductSchema.index({ name: 'text', description: 'text' });
+
+ProductSchema.plugin(softDeletePlugin);
 
 export const Product = mongoose.model('Product', ProductSchema);

@@ -9,38 +9,45 @@ const orderProductSchema = z.object({
     // en la colección de productos (ver product.schema.js).
     sku: z
         .string({ error: 'SKU is required' })
+        .trim()
         .min(1)
+        .max(50)
         .transform((val) => val.toUpperCase()),
     count: z
         .number()
         .int()
         .positive('Count must be a positive integer')
+        .max(10_000, 'Count is too large')
         .optional(),
     price: z
         .number({ error: 'Price is required' })
         .positive('Price must be a positive number'),
     discount: z.number().min(0).max(100).optional(),
     // El impuesto se guarda como string para admitir formatos como "21%" o "IVA reducido"
-    tax: z.string().optional(),
-    total: z.number().optional(),
+    tax: z.string().trim().max(50).optional(),
+    total: z.number().nonnegative().optional(),
 });
 
 /**
  * Schema para crear un pedido.
  * El email se normaliza a minúsculas para coincidir con el modelo (lowercase: true).
  * La fecha es opcional; si no viene, se puede asignar en el service o modelo.
+ *
+ * El límite de 100 productos por pedido protege contra pedidos excesivos que
+ * harían que `decrementStockAtomic` tarde demasiado o sature la BD.
  */
 export const createOrderSchema = z.object({
     email: z
         .email({ error: 'Invalid email format' })
-        .transform((val) => val.toLowerCase()),
+        .max(254)
+        .transform((val) => val.toLowerCase().trim()),
     date: z.coerce.date().optional(),
-    // El pedido debe tener al menos un producto
     products: z
         .array(orderProductSchema)
-        .min(1, 'The order must contain at least one product'),
+        .min(1, 'The order must contain at least one product')
+        .max(100, 'The order cannot contain more than 100 products'),
     discount: z.number().min(0).max(100).optional(),
-    total: z.number().optional(),
+    total: z.number().nonnegative().optional(),
 });
 
 /**

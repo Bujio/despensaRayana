@@ -1,6 +1,9 @@
+import mongoose from 'mongoose';
 import { Order, VALID_TRANSITIONS } from '../db/models/order.model.js';
 import { Product } from '../db/models/product.model.js';
 import { sendOrderConfirmationEmail, sendOrderStatusEmail } from './email.js';
+import { logger } from '../utils/logger.js';
+import { HttpError } from '../utils/http-error.js';
 
 /**
  * Decrementa el stock de cada producto de forma atómica y condicional.
@@ -8,45 +11,58 @@ import { sendOrderConfirmationEmail, sendOrderStatusEmail } from './email.js';
  * solo se actualiza si hay stock suficiente en el momento exacto del update,
  * evitando la race condition entre "comprobar" y "decrementar".
  *
- * Si algún producto no existe o no tiene stock suficiente, se revierte
- * el decremento de los productos ya actualizados para dejar el stock consistente.
+ * Si `session` está presente, la operación participa en la transacción
+ * y cualquier fallo se revierte al abortarla, por lo que no hace falta
+ * rollback manual. Sin sesión, el caller se encarga de revertir los
+ * decrementos previos.
  *
  * @param {Array<{ sku, count }>} products - Líneas de producto del pedido
- * @throws {Error} 404 si algún SKU no existe, 400 si no hay stock
+ * @param {mongoose.ClientSession|null} session - Sesión de transacción opcional
+ * @throws {HttpError} 404 si algún SKU no existe, 400 si no hay stock
  */
-const decrementStockAtomic = async (products) => {
+const decrementStockAtomic = async (products, session = null) => {
     const applied = [];
 
     for (const { sku, count = 1 } of products) {
         const result = await Product.updateOne(
             { sku, stock: { $gte: count } },
             { $inc: { stock: -count } },
+            session ? { session } : undefined,
         );
 
         if (result.matchedCount === 0) {
-            // Revertimos los decrementos previos antes de lanzar el error
-            await Promise.all(
-                applied.map(({ sku: s, count: c }) =>
-                    Product.updateOne({ sku: s }, { $inc: { stock: c } }),
-                ),
-            );
+            // Sin transacción: revertimos manualmente los decrementos previos
+            // antes de lanzar el error. Con transacción, el abort lo revierte todo.
+            if (!session) {
+                await Promise.all(
+                    applied.map(({ sku: s, count: c }) =>
+                        Product.updateOne({ sku: s }, { $inc: { stock: c } }),
+                    ),
+                );
+            }
 
             // Distinguimos entre "no existe" y "sin stock" para devolver el código correcto
             const exists = await Product.exists({ sku });
             if (!exists) {
-                throw Object.assign(
-                    new Error(`Product with SKU "${sku}" not found`),
-                    { status: 404 },
-                );
+                throw new HttpError(`Product with SKU "${sku}" not found`, 404);
             }
-            throw Object.assign(
-                new Error(`Insufficient stock for SKU "${sku}"`),
-                { status: 400 },
-            );
+            throw new HttpError(`Insufficient stock for SKU "${sku}"`, 400);
         }
 
         applied.push({ sku, count });
     }
+};
+
+/**
+ * Comprueba si el cluster de MongoDB soporta transacciones.
+ * Las transacciones requieren un replica set o un sharded cluster:
+ * en una instancia standalone (común en desarrollo), `startTransaction`
+ * lanza un error. Este check nos permite degradar con gracia.
+ */
+const supportsTransactions = () => {
+    const topology = mongoose.connection?.client?.topology;
+    const type = topology?.description?.type;
+    return type === 'ReplicaSetWithPrimary' || type === 'Sharded';
 };
 
 /**
@@ -92,26 +108,42 @@ export const listOrdersByEmailService = async (email, { skip, limit }) => {
 /**
  * Crea un nuevo pedido y descuenta el stock de cada producto incluido.
  *
- * Flujo:
- * 1. Verifica que todos los productos existen y tienen stock suficiente.
- * 2. Crea el pedido en la base de datos.
- * 3. Descuenta las unidades vendidas de cada producto con $inc.
+ * Si el cluster soporta transacciones (replica set / sharded), envolvemos
+ * el decremento de stock y la creación del pedido en una sesión. Cualquier
+ * fallo aborta la transacción y deja la BD consistente sin rollback manual.
  *
- * Si la verificación de stock falla, se lanza un error antes de crear el pedido,
- * por lo que no queda ningún dato inconsistente.
+ * En standalone (típico en desarrollo) caemos al flujo sin sesión: primero
+ * decrementamos con rollback manual si falla, luego creamos el pedido y, si
+ * la creación falla, reponemos el stock.
  *
  * @param {object} data - Datos del pedido validados por Zod
  * @returns {Promise<Order>} El pedido creado
- * @throws {Error} Si algún producto no existe o no tiene stock suficiente
+ * @throws {HttpError} Si algún producto no existe o no tiene stock suficiente
  */
 export const createOrderService = async (data) => {
-    // Paso 1: decrementamos el stock de forma atómica y condicional.
-    // Si algún producto no tiene stock, se revierten los decrementos previos
-    // y se lanza un error antes de crear el pedido.
-    await decrementStockAtomic(data.products);
+    if (supportsTransactions()) {
+        const session = await mongoose.startSession();
+        try {
+            let order;
+            await session.withTransaction(async () => {
+                await decrementStockAtomic(data.products, session);
+                const created = await Order.create([data], { session });
+                order = created[0];
+            });
+            sendOrderConfirmationEmail(order).catch((err) =>
+                logger.error(
+                    'Failed to send order confirmation email:',
+                    err.message,
+                ),
+            );
+            return order;
+        } finally {
+            await session.endSession();
+        }
+    }
 
-    // Paso 2: creamos el pedido. Si Order.create() falla por cualquier razón,
-    // revertimos el stock para no dejar datos inconsistentes.
+    // Fallback standalone: decremento atómico + rollback manual.
+    await decrementStockAtomic(data.products);
     let order;
     try {
         order = await Order.create(data);
@@ -124,9 +156,8 @@ export const createOrderService = async (data) => {
         throw err;
     }
 
-    // Paso 3: enviamos email de confirmación (no bloqueante — si falla no afecta al pedido)
     sendOrderConfirmationEmail(order).catch((err) =>
-        console.error('Failed to send order confirmation email:', err.message),
+        logger.error('Failed to send order confirmation email:', err.message),
     );
 
     return order;
@@ -159,23 +190,21 @@ export const updateOrderService = async (id, data) => {
  * @param {string} id - ID de MongoDB del pedido
  * @param {string} newStatus - Nuevo estado solicitado
  * @returns {Promise<Order>} El pedido con el estado actualizado
- * @throws {Error} Si el pedido no existe o la transición no está permitida
+ * @throws {HttpError} Si el pedido no existe o la transición no está permitida
  */
 export const updateOrderStatusService = async (id, newStatus) => {
     const order = await Order.findById(id);
     if (!order) {
-        throw Object.assign(new Error('Order not found'), { status: 404 });
+        throw new HttpError('Order not found', 404);
     }
 
     const allowed = VALID_TRANSITIONS[order.status];
 
     // Si el array de transiciones permitidas no incluye el nuevo estado, lo rechazamos
     if (!allowed.includes(newStatus)) {
-        throw Object.assign(
-            new Error(
-                `Invalid transition: cannot change status from "${order.status}" to "${newStatus}"`,
-            ),
-            { status: 400 },
+        throw new HttpError(
+            `Invalid transition: cannot change status from "${order.status}" to "${newStatus}"`,
+            400,
         );
     }
 
@@ -184,7 +213,7 @@ export const updateOrderStatusService = async (id, newStatus) => {
 
     // Notificamos al cliente del cambio de estado (no bloqueante)
     sendOrderStatusEmail(updated).catch((err) =>
-        console.error('Failed to send order status email:', err.message),
+        logger.error('Failed to send order status email:', err.message),
     );
 
     return updated;

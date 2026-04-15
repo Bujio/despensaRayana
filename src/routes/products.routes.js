@@ -22,10 +22,101 @@ const {
 
 export const productsRouter = Router();
 
-// Lectura pública: cualquier visitante puede ver el catálogo sin autenticarse
+/**
+ * @openapi
+ * tags:
+ *   name: Products
+ *   description: Catálogo de productos
+ */
+
+/**
+ * @openapi
+ * /products:
+ *   get:
+ *     tags: [Products]
+ *     summary: Lista paginada del catálogo con filtros opcionales
+ *     security: []
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema: { type: integer, minimum: 1 }
+ *       - in: query
+ *         name: limit
+ *         schema: { type: integer, minimum: 1, maximum: 100 }
+ *       - in: query
+ *         name: categoryId
+ *         schema: { type: string }
+ *       - in: query
+ *         name: search
+ *         schema: { type: string }
+ *         description: Búsqueda full-text sobre nombre y descripción
+ *       - in: query
+ *         name: inStock
+ *         schema: { type: boolean }
+ *       - in: query
+ *         name: minPrice
+ *         schema: { type: number }
+ *       - in: query
+ *         name: maxPrice
+ *         schema: { type: number }
+ *       - in: query
+ *         name: sort
+ *         schema:
+ *           type: string
+ *           enum: [name, price, stock, createdAt]
+ *       - in: query
+ *         name: order
+ *         schema:
+ *           type: string
+ *           enum: [asc, desc]
+ *     responses:
+ *       200:
+ *         description: Página de productos
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 data:
+ *                   type: array
+ *                   items: { $ref: '#/components/schemas/Product' }
+ *                 pagination: { $ref: '#/components/schemas/Pagination' }
+ */
 productsRouter.get('/', listProducts);
+
+/**
+ * @openapi
+ * /products/{id}:
+ *   get:
+ *     tags: [Products]
+ *     summary: Devuelve un producto por su ID
+ *     security: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Producto
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/Product' }
+ *       404: { description: No encontrado }
+ */
 productsRouter.get('/:id', validateObjectId, getProduct);
 
+/**
+ * @openapi
+ * /products:
+ *   post:
+ *     tags: [Products]
+ *     summary: Crea un nuevo producto (solo admin)
+ *     responses:
+ *       201: { description: Creado }
+ *       401: { description: No autenticado }
+ *       403: { description: No autorizado }
+ */
 // Escritura restringida a admins, con rate limit para proteger la BD
 productsRouter.post(
     '/',
@@ -35,6 +126,33 @@ productsRouter.post(
     validate(createProductSchema),
     createProduct,
 );
+
+/**
+ * @openapi
+ * /products/{id}:
+ *   patch:
+ *     tags: [Products]
+ *     summary: Actualiza un producto (solo admin)
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200: { description: Actualizado }
+ *       404: { description: No encontrado }
+ *   delete:
+ *     tags: [Products]
+ *     summary: Soft delete de un producto (solo admin)
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200: { description: Eliminado }
+ *       404: { description: No encontrado }
+ */
 productsRouter.patch(
     '/:id',
     writeLimiter,
@@ -53,6 +171,29 @@ productsRouter.delete(
     deleteProduct,
 );
 
+/**
+ * @openapi
+ * /products/{id}/images:
+ *   post:
+ *     tags: [Products]
+ *     summary: Sube imágenes al producto (multipart, campo "images", máx. 5)
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     requestBody:
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               images:
+ *                 type: array
+ *                 items: { type: string, format: binary }
+ *     responses:
+ *       200: { description: Producto con las imágenes añadidas }
+ */
 // Subida de imágenes: multipart/form-data, campo "images" (máx. 5 archivos).
 // writeLimiter también aquí para evitar uploads masivos a Cloudinary (coste real).
 productsRouter.post(

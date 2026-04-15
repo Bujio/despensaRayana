@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { logger } from '../utils/logger.js';
 
 /**
  * Establece la conexión con MongoDB usando Mongoose.
@@ -11,5 +12,5 @@ import mongoose from 'mongoose';
  */
 export const connectDB = async () => {
     await mongoose.connect(process.env.MONGODB_URI2);
-    console.log('Successfully connected to database');
+    logger.info('Successfully connected to database');
 };

@@ -1,5 +1,6 @@
 import { Category } from '../db/models/category.model.js';
 import { Product } from '../db/models/product.model.js';
+import { HttpError } from '../utils/http-error.js';
 
 /**
  * Devuelve todas las categorías.
@@ -45,23 +46,25 @@ export const updateCategoryService = async (id, data) => {
 };
 
 /**
- * Elimina una categoría por su ID.
- * Lanza un error si hay productos que la referencian para evitar
- * referencias huérfanas en la colección de productos.
+ * Marca una categoría como borrada (soft delete).
+ * Rechazamos el borrado si quedan productos activos referenciándola,
+ * porque el filtro automático de soft delete los ocultaría del listado
+ * pero seguirían referenciando un category.id inaccesible.
  *
  * @param {string} id
  * @returns {Promise<Category|null>}
- * @throws {Error} Si la categoría tiene productos asociados
+ * @throws {HttpError} Si la categoría tiene productos asociados
  */
 export const deleteCategoryService = async (id) => {
     const linked = await Product.countDocuments({ category: id });
     if (linked > 0) {
-        throw Object.assign(
-            new Error(
-                `Cannot delete category: ${linked} product(s) are still linked to it`,
-            ),
-            { status: 409 },
+        throw new HttpError(
+            `Cannot delete category: ${linked} product(s) are still linked to it`,
+            409,
         );
     }
-    return await Category.findByIdAndDelete(id);
+    const category = await Category.findById(id);
+    if (!category) return null;
+    await category.softDelete();
+    return category;
 };

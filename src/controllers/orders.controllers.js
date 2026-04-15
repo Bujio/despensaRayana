@@ -7,24 +7,18 @@ import {
     updateOrderStatusService,
     deleteOrderService,
 } from '../services/orders.js';
+import { Cart } from '../db/models/cart.model.js';
 import { getPagination, buildPaginationMeta } from '../utils/pagination.js';
+import { assertOwnerOrAdmin } from '../utils/authz.js';
+import { HttpError } from '../utils/http-error.js';
+import { logger } from '../utils/logger.js';
 
 export const ordersController = () => {
-    const isOwnerOrAdmin = (orderEmail, req, res) => {
-        if (req.user.role === 'admin' || req.user.email === orderEmail)
-            return true;
-        res.status(403).json({
-            message: 'Forbidden: insufficient permissions',
-        });
-        return false;
-    };
-
     const getOrder = async (req, res, next) => {
         try {
             const order = await getOrderService(req.params.id);
-            if (!order)
-                return res.status(404).json({ message: 'Order not found' });
-            if (!isOwnerOrAdmin(order.email, req, res)) return;
+            if (!order) throw new HttpError('Order not found', 404);
+            assertOwnerOrAdmin(req, req.user.email === order.email);
             return res.status(200).json(order);
         } catch (error) {
             next(error);
@@ -50,10 +44,12 @@ export const ordersController = () => {
 
     const listOrdersByEmail = async (req, res, next) => {
         try {
-            if (!isOwnerOrAdmin(req.params.email, req, res)) return;
+            // Normalizamos a minúsculas porque los emails se guardan lowercase
+            const targetEmail = req.params.email.toLowerCase();
+            assertOwnerOrAdmin(req, req.user.email === targetEmail);
             const pagination = getPagination(req.query);
             const { data, total } = await listOrdersByEmailService(
-                req.params.email,
+                targetEmail,
                 pagination,
             );
             return res.status(200).json({
@@ -71,7 +67,30 @@ export const ordersController = () => {
 
     const createOrder = async (req, res, next) => {
         try {
+            // El cliente autenticado solo puede crear pedidos a su propio email.
+            // Los admins pueden crear pedidos para cualquier email (para casos de soporte).
+            if (
+                req.user.role !== 'admin' &&
+                req.body.email !== req.user.email
+            ) {
+                throw new HttpError(
+                    'Forbidden: cannot create orders for other users',
+                    403,
+                );
+            }
             const order = await createOrderService(req.body);
+
+            // Vaciamos el carrito del usuario tras crear el pedido.
+            // Best-effort: un fallo aquí no debe impactar al usuario — el
+            // pedido ya se creó correctamente. Usamos updateOne para no
+            // fallar si el usuario no tenía carrito.
+            Cart.updateOne(
+                { userId: req.user.id },
+                { $set: { items: [] } },
+            ).catch((err) =>
+                logger.error('Failed to clear cart after order:', err.message),
+            );
+
             return res.status(201).json(order);
         } catch (error) {
             next(error);
@@ -81,9 +100,8 @@ export const ordersController = () => {
     const updateOrder = async (req, res, next) => {
         try {
             const order = await getOrderService(req.params.id);
-            if (!order)
-                return res.status(404).json({ message: 'Order not found' });
-            if (!isOwnerOrAdmin(order.email, req, res)) return;
+            if (!order) throw new HttpError('Order not found', 404);
+            assertOwnerOrAdmin(req, req.user.email === order.email);
 
             // Excluimos 'products' del body: cambiar las líneas de un pedido
             // existente requeriría reajustar el stock, lo que no hace este endpoint.
@@ -111,8 +129,7 @@ export const ordersController = () => {
     const deleteOrder = async (req, res, next) => {
         try {
             const order = await deleteOrderService(req.params.id);
-            if (!order)
-                return res.status(404).json({ message: 'Order not found' });
+            if (!order) throw new HttpError('Order not found', 404);
             return res
                 .status(200)
                 .json({ message: 'Order deleted successfully' });

@@ -4,8 +4,37 @@ export default [
     eslintConfigPrettier,
     {
         rules: {
-            'no-unused-vars': 'warn',
+            // Variables/argumentos con prefijo "_" se consideran intencionalmente
+            // no usados (patrones como `const { password: _pw, ...rest } = ...`
+            // o error handlers de Express con firma `(err, req, res, _next)`).
+            'no-unused-vars': [
+                'warn',
+                {
+                    argsIgnorePattern: '^_',
+                    varsIgnorePattern: '^_',
+                    destructuredArrayIgnorePattern: '^_',
+                    caughtErrorsIgnorePattern: '^_',
+                },
+            ],
             'no-console': 'warn',
+        },
+    },
+    // En los archivos de test habilitamos los globals inyectados por Jest
+    // (describe, test, beforeAll, etc.) para no tener que importarlos uno a uno.
+    {
+        files: ['tests/**/*.js'],
+        languageOptions: {
+            globals: {
+                describe: 'readonly',
+                test: 'readonly',
+                it: 'readonly',
+                expect: 'readonly',
+                beforeAll: 'readonly',
+                afterAll: 'readonly',
+                beforeEach: 'readonly',
+                afterEach: 'readonly',
+                jest: 'readonly',
+            },
         },
     },
 ];

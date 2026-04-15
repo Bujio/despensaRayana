@@ -8,8 +8,10 @@ import { z } from 'zod';
 export const createCategorySchema = z.object({
     name: z
         .string({ error: 'Category name is required' })
-        .min(2, 'Name must be at least 2 characters'),
-    description: z.string().optional(),
+        .trim()
+        .min(2, 'Name must be at least 2 characters')
+        .max(80, 'Name must be at most 80 characters'),
+    description: z.string().trim().max(500).optional(),
 });
 
 /**

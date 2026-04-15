@@ -10,6 +10,7 @@ validateEnv();
 
 const { app } = await import('./app.js');
 const { connectDB } = await import('./src/db/init.js');
+const { logger } = await import('./src/utils/logger.js');
 
 //Listen APP
 const PORT = process.env.PORT ?? 3000;
@@ -18,17 +19,17 @@ const HOST = process.env.HOST ?? 'localhost';
 try {
     await connectDB();
     const server = app.listen(PORT, () =>
-        console.log(`Server listening on http://${HOST}:${PORT}`),
+        logger.info(`Server listening on http://${HOST}:${PORT}`),
     );
 
     // Graceful shutdown: al recibir SIGTERM/SIGINT cerramos primero el servidor
     // HTTP (deja de aceptar peticiones pero termina las en curso) y luego
     // la conexión de Mongoose. Si algo tarda más de 10s abortamos duro.
     const shutdown = async (signal) => {
-        console.log(`\n${signal} received, shutting down gracefully...`);
+        logger.info(`${signal} received, shutting down gracefully...`);
 
         const forceExit = setTimeout(() => {
-            console.error('Graceful shutdown timed out, forcing exit');
+            logger.error('Graceful shutdown timed out, forcing exit');
             process.exit(1);
         }, 10_000);
 
@@ -36,7 +37,7 @@ try {
             const mongoose = (await import('mongoose')).default;
             await mongoose.connection.close();
             clearTimeout(forceExit);
-            console.log('Shutdown complete');
+            logger.info('Shutdown complete');
             process.exit(0);
         });
     };
@@ -46,6 +47,6 @@ try {
 } catch (error) {
     // Si la BD no conecta, abortamos el proceso para que el orquestador
     // (PM2, Docker, Kubernetes) pueda detectarlo y reiniciar el servicio.
-    console.error('Error connecting to database:', error);
+    logger.error('Error connecting to database:', error);
     process.exit(1);
 }

@@ -1,6 +1,12 @@
 import { Product } from '../db/models/product.model.js';
 
 /**
+ * Campos por los que se permite ordenar el listado de productos.
+ * Whitelist para evitar que el cliente ordene por campos internos/sensibles.
+ */
+const SORTABLE_FIELDS = new Set(['name', 'price', 'stock', 'createdAt']);
+
+/**
  * Obtiene un producto por su ID, poblando el nombre y slug de su categoría.
  *
  * @param {string} id - ID de MongoDB del producto
@@ -11,21 +17,67 @@ export const getProductService = async (id) => {
 };
 
 /**
- * Devuelve una página de productos del catálogo.
- * Soporta filtrado opcional por categoryId.
+ * Devuelve una página de productos del catálogo aplicando filtros y orden.
+ *
+ * Soporta:
+ *   - `categoryId` → filtro por categoría
+ *   - `search`     → búsqueda full-text sobre name + description (usa text index)
+ *   - `inStock`    → true solo devuelve productos con stock > 0
+ *   - `minPrice` / `maxPrice` → rango de precio
+ *   - `sort`       → campo por el que ordenar (whitelist)
+ *   - `order`      → 'asc' | 'desc' (por defecto asc, desc si es búsqueda por score)
  *
  * @param {{ skip: number, limit: number }} pagination - Parámetros de paginación
- * @param {string} [categoryId] - ID de categoría para filtrar (opcional)
+ * @param {object} [filters] - Filtros opcionales
  * @returns {Promise<{ data: Product[], total: number }>}
  */
-export const listProductsService = async ({ skip, limit }, categoryId) => {
-    const filter = categoryId ? { category: categoryId } : {};
-    // Ejecutamos ambas queries en paralelo para no hacer esperar una a la otra
+export const listProductsService = async (
+    { skip, limit },
+    {
+        categoryId,
+        search,
+        inStock,
+        minPrice,
+        maxPrice,
+        sort,
+        order = 'asc',
+    } = {},
+) => {
+    const filter = {};
+    if (categoryId) filter.category = categoryId;
+    if (inStock) filter.stock = { $gt: 0 };
+
+    if (minPrice != null || maxPrice != null) {
+        filter.price = {};
+        if (minPrice != null) filter.price.$gte = minPrice;
+        if (maxPrice != null) filter.price.$lte = maxPrice;
+    }
+
+    // Búsqueda full-text. Requiere el índice de texto sobre name+description
+    // definido en el modelo. Mongo devuelve un `score` que usamos para ordenar
+    // por relevancia cuando no se pide otro criterio explícito.
+    let projection;
+    let defaultSort;
+    if (search) {
+        filter.$text = { $search: search };
+        projection = { score: { $meta: 'textScore' } };
+        defaultSort = { score: { $meta: 'textScore' } };
+    }
+
+    // Construimos el objeto de sort respetando la whitelist.
+    let sortObj = defaultSort ?? { createdAt: -1 };
+    if (sort && SORTABLE_FIELDS.has(sort)) {
+        sortObj = { [sort]: order === 'desc' ? -1 : 1 };
+    }
+
+    const query = Product.find(filter, projection)
+        .populate('category', 'name slug')
+        .sort(sortObj)
+        .skip(skip)
+        .limit(limit);
+
     const [data, total] = await Promise.all([
-        Product.find(filter)
-            .populate('category', 'name slug')
-            .skip(skip)
-            .limit(limit),
+        query,
         Product.countDocuments(filter),
     ]);
     return { data, total };
@@ -57,13 +109,18 @@ export const updateProductService = async (id, data) => {
 };
 
 /**
- * Elimina un producto por su ID.
+ * Marca un producto como borrado (soft delete).
+ * Permite retirarlo del catálogo sin perder el histórico de pedidos que
+ * lo contengan ni romper integridad referencial.
  *
  * @param {string} id - ID de MongoDB del producto
- * @returns {Promise<Product|null>} El producto eliminado o null si no existía
+ * @returns {Promise<Product|null>} El producto borrado o null si no existía
  */
 export const deleteProductService = async (id) => {
-    return await Product.findByIdAndDelete(id);
+    const product = await Product.findById(id);
+    if (!product) return null;
+    await product.softDelete();
+    return product;
 };
 
 /**

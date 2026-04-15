@@ -1,4 +1,5 @@
 import mongoose, { Schema } from 'mongoose';
+import { softDeletePlugin } from '../plugins/soft-delete.js';
 
 const CategorySchema = new Schema(
     {
@@ -25,8 +26,12 @@ const CategorySchema = new Schema(
  * Genera el slug antes de guardar convirtiendo el nombre a minúsculas,
  * reemplazando espacios por guiones y eliminando caracteres especiales.
  * Solo se regenera si el campo name ha sido modificado.
+ *
+ * Nota: Mongoose 9 cambió la firma de los pre hooks — el primer argumento
+ * ya no es `next`, sino las opciones del save. Usamos la forma async
+ * (sin next) que Mongoose detecta por devolver una promesa.
  */
-CategorySchema.pre('save', function (next) {
+CategorySchema.pre('save', async function slugify() {
     if (this.isModified('name')) {
         this.slug = this.name
             .toLowerCase()
@@ -36,7 +41,8 @@ CategorySchema.pre('save', function (next) {
             .trim()
             .replace(/\s+/g, '-'); // espacios → guiones
     }
-    next();
 });
+
+CategorySchema.plugin(softDeletePlugin);
 
 export const Category = mongoose.model('Category', CategorySchema);

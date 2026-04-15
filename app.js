@@ -2,7 +2,9 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
+import swaggerUi from 'swagger-ui-express';
 import { router } from './src/routes/index.js';
+import { swaggerSpec } from './src/docs/swagger.js';
 
 const app = express();
 
@@ -21,6 +23,18 @@ app.use(express.json());
 // morgan registra cada petición en consola.
 // 'dev' en desarrollo (colorido y conciso); 'combined' en producción (Apache format, más detallado).
 app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
+
+// Documentación interactiva de la API en /api/docs.
+// El JSON crudo de la especificación está disponible en /api/docs.json
+// para clientes automáticos (Postman, generadores de SDK, etc.).
+app.get('/api/docs.json', (_req, res) => res.json(swaggerSpec));
+app.use(
+    '/api/docs',
+    swaggerUi.serve,
+    swaggerUi.setup(swaggerSpec, {
+        customSiteTitle: 'Despensa Rayana API docs',
+    }),
+);
 
 // Todas las rutas de la API están bajo el prefijo /api
 app.use('/api', router);

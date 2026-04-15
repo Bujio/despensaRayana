@@ -1,6 +1,13 @@
 import { rateLimit } from 'express-rate-limit';
 
 /**
+ * Cuando NODE_ENV === 'test' devolvemos `true` para que `express-rate-limit`
+ * salte el contador y no bloquee los tests, que ejecutan decenas de
+ * registros/logins contra la misma IP de localhost.
+ */
+export const skipInTest = () => process.env.NODE_ENV === 'test';
+
+/**
  * Rate limiter para endpoints de escritura de recursos (crear pedidos,
  * crear/editar productos, subida de imágenes...).
  *
@@ -20,4 +27,5 @@ export const writeLimiter = rateLimit({
     },
     standardHeaders: 'draft-8',
     legacyHeaders: false,
+    skip: skipInTest,
 });
