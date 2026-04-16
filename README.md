@@ -18,12 +18,16 @@ REST API for a local-products online store from the comarca of Valencia de Alcá
 
 ## Features
 
-- JWT authentication with role-based access control (`user`, `admin`).
-- Product catalogue with categories, pagination and filtering.
+- JWT authentication with access + refresh token rotation and reuse-attack detection.
+- Role-based access control (`user`, `admin`).
+- Email verification flow on registration with resend support (24 h token TTL).
+- Product catalogue with categories, pagination, full-text search, price range and stock filters.
 - Per-user shopping cart with atomic SKU-based operations.
 - Order workflow with a strict state machine and atomic stock decrement (no negative stock under concurrent orders).
 - Image upload to Cloudinary (up to 5 per product).
-- Transactional emails on order creation and status changes.
+- Transactional emails on registration, order creation and status changes.
+- OpenAPI (Swagger UI) docs served at `/api/docs`.
+- Integration test suite (Jest + mongodb-memory-server + supertest).
 - Fail-fast startup: required env vars are validated before the server boots.
 - Graceful shutdown on `SIGTERM` / `SIGINT`.
 
@@ -46,6 +50,12 @@ despensa-rayana/
 ├── index.js                          # Entry point (env validation, DB, graceful shutdown)
 ├── app.js                            # Express app (middleware, routing, error handler)
 ├── .env.example                      # Environment variables reference
+├── tests/                            # Integration tests (Jest + mongodb-memory-server)
+│   ├── auth.test.js
+│   ├── products.test.js
+│   ├── cart.test.js
+│   ├── orders.test.js
+│   └── helpers/setup.js              # In-memory DB lifecycle + test helpers
 └── src/
     ├── db/
     │   ├── init.js                   # MongoDB connection
@@ -54,10 +64,11 @@ despensa-rayana/
     │       ├── product.model.js
     │       ├── order.model.js        # Includes VALID_TRANSITIONS state machine
     │       ├── cart.model.js
-    │       └── category.model.js
+    │       ├── category.model.js
+    │       └── refresh-token.model.js
     ├── controllers/                  # HTTP layer (req/res)
     ├── services/                     # Business logic and DB access
-    │   ├── auth.js
+    │   ├── auth.js                   # register / login / refresh / logout / email verify
     │   ├── users.js
     │   ├── products.js
     │   ├── orders.js                 # Atomic stock decrement + rollback
@@ -80,8 +91,12 @@ despensa-rayana/
     │   ├── upload.middleware.js      # Cloudinary/Multer upload
     │   └── ratelimit.middleware.js   # writeLimiter (30 req / 15 min per IP)
     ├── schemas/                      # Zod validation schemas
+    ├── docs/                         # OpenAPI / Swagger definitions
     └── utils/
         ├── env.js                    # Fail-fast env var validation
+        ├── http-error.js             # HttpError helper
+        ├── tokens.js                 # generateRandomToken / hashToken
+        ├── logger.js
         └── pagination.js
 ```
 
@@ -140,10 +155,14 @@ All routes are prefixed with `/api`.
 
 ### Authentication — `/api/auth`
 
-| Method | Route       | Description            | Access | Rate limit      |
-| ------ | ----------- | ---------------------- | ------ | --------------- |
-| POST   | `/register` | Create an account      | Public | 5/hour per IP   |
-| POST   | `/login`    | Sign in, returns a JWT | Public | 10/15min per IP |
+| Method | Route                  | Description                                   | Access | Rate limit      |
+| ------ | ---------------------- | --------------------------------------------- | ------ | --------------- |
+| POST   | `/register`            | Create an account and send verification email | Public | 5/hour per IP   |
+| POST   | `/login`               | Sign in — returns access + refresh token      | Public | 10/15min per IP |
+| POST   | `/refresh`             | Rotate refresh token, issue new pair          | Public |                 |
+| POST   | `/logout`              | Revoke a refresh token (single-device logout) | Public |                 |
+| GET    | `/verify/:token`       | Confirm email from the verification link      | Public |                 |
+| POST   | `/resend-verification` | Re-send the verification email                | Public | 3/hour per IP   |
 
 **Register body:**
 
@@ -172,8 +191,19 @@ Password must be at least 6 characters and include at least one uppercase letter
 **Login response:**
 
 ```json
-{ "token": "<jwt>" }
+{
+    "accessToken": "<jwt>",
+    "refreshToken": "<opaque-token>",
+    "user": {
+        "id": "...",
+        "name": "María García",
+        "email": "maria@example.com",
+        "role": "user"
+    }
+}
 ```
+
+The access token expires in **15 minutes**. Use `POST /refresh` with the refresh token (valid for **7 days**) to get a new pair silently. Each refresh rotates the token — reusing a revoked refresh token triggers a reuse-attack response that immediately revokes all active sessions for that user.
 
 ---
 
@@ -201,9 +231,17 @@ Password must be at least 6 characters and include at least one uppercase letter
 
 **Query params for listing:**
 
-- `page` — page number (default: `1`)
-- `limit` — items per page (default: `10`, max: `100`)
-- `categoryId` — filter by category (must be a valid ObjectId)
+| Param        | Type     | Description                                                  |
+| ------------ | -------- | ------------------------------------------------------------ |
+| `page`       | number   | Page number (default: `1`)                                   |
+| `limit`      | number   | Items per page (default: `10`, max: `100`)                   |
+| `categoryId` | ObjectId | Filter by category                                           |
+| `search`     | string   | Full-text search over name and description (uses text index) |
+| `inStock`    | boolean  | `true` hides out-of-stock products (`stock = 0`)             |
+| `minPrice`   | number   | Minimum price (inclusive)                                    |
+| `maxPrice`   | number   | Maximum price (inclusive)                                    |
+| `sort`       | string   | Field to sort by: `name`, `price`, `stock`, `createdAt`      |
+| `order`      | string   | `asc` (default) or `desc`                                    |
 
 **Create product body:**
 
@@ -306,13 +344,13 @@ The `slug` field is auto-generated from `name` (accent normalization + kebab-cas
 
 ## Authentication & Roles
 
-Protected routes require a JWT in the `Authorization` header:
+Protected routes require the **access token** in the `Authorization` header:
 
 ```
-Authorization: Bearer <token>
+Authorization: Bearer <accessToken>
 ```
 
-The token is issued by `POST /api/auth/login` and contains `{ id, role, email }` in its payload.
+The access token is issued by `POST /api/auth/login` and contains `{ id, role, email }` in its payload. It expires in **15 minutes** — use `POST /api/auth/refresh` to renew it silently using the companion refresh token (valid 7 days, stored server-side and rotated on each use).
 
 | Role    | Description                                                     |
 | ------- | --------------------------------------------------------------- |
@@ -366,20 +404,28 @@ Internal errors (`500`) always return `{ "message": "Internal server error" }` t
 - **Rate limiting**:
     - `POST /auth/register` — 5 / hour per IP.
     - `POST /auth/login` — 10 / 15 min per IP (brute-force protection).
+    - `POST /auth/resend-verification` — 3 / hour per IP (anti-spam).
     - All write endpoints on products and orders — 30 / 15 min per IP.
 - **Password storage**: bcrypt hashes (`saltRounds = 10`); passwords are never returned in responses.
 - **User enumeration**: login returns the same `401` whether the email exists or not.
 - **ObjectId validation** runs before `:id` route handlers to prevent 500s from malformed IDs.
+- **Refresh token rotation**: every use issues a new refresh token and invalidates the previous one. Presenting a revoked refresh token is treated as a reuse attack — all active sessions for the user are immediately revoked.
+- **Email verification tokens**: stored as a SHA-256 hash in the database; the plain token is only sent by email and never persisted.
 - **Atomic stock decrement** prevents overselling under concurrent orders and rolls back partial decrements if any SKU fails.
+- **Soft deletes** on users and products: records are flagged with `deletedAt` and excluded from normal queries without losing referential integrity.
 - **Fail-fast startup**: missing env vars abort boot with a clear message.
 - **Graceful shutdown** closes the HTTP server and the Mongoose connection on `SIGTERM` / `SIGINT`, with a 10 s hard timeout.
 
 ## Scripts
 
 ```bash
-npm run dev     # Start server with hot-reload (node --watch)
-npm run prepare # Install Husky git hooks (runs automatically after npm install)
+npm run dev          # Start server with hot-reload (node --watch)
+npm test             # Run the full integration test suite (Jest)
+npm run test:watch   # Run tests in watch mode
+npm run prepare      # Install Husky git hooks (runs automatically after npm install)
 ```
+
+The test suite spins up an in-memory MongoDB instance via `mongodb-memory-server` and exercises real HTTP calls with `supertest` — no external services needed.
 
 Commits are linted by commitlint (conventional commits) and staged files are formatted with Prettier and ESLint via lint-staged.
 
