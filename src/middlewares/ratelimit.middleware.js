@@ -7,25 +7,35 @@ import { rateLimit } from 'express-rate-limit';
  */
 export const skipInTest = () => process.env.NODE_ENV === 'test';
 
+const createLimiter = ({ limit, message }) =>
+    rateLimit({
+        windowMs: 15 * 60 * 1000,
+        limit,
+        message: { message },
+        standardHeaders: 'draft-8',
+        legacyHeaders: false,
+        skip: skipInTest,
+    });
+
 /**
- * Rate limiter para endpoints de escritura de recursos (crear pedidos,
- * crear/editar productos, subida de imágenes...).
+ * Rate limiter para endpoints de escritura administrativa de recursos
+ * (crear/editar productos, subir imágenes, etc.).
  *
- * Protege contra:
- *   - Creación masiva de pedidos falsos que agoten stock.
- *   - Subida masiva de imágenes a Cloudinary (coste real en €).
- *   - Escrituras ruidosas que saturen la BD.
- *
- * 30 peticiones por IP cada 15 minutos es un límite holgado para uso legítimo
- * y estricto frente a abuso.
+ * Se mantiene separado del checkout para que una sesión de backoffice no
+ * bloquee pedidos legítimos de clientes desde la misma IP local.
  */
-export const writeLimiter = rateLimit({
-    windowMs: 15 * 60 * 1000,
+export const writeLimiter = createLimiter({
     limit: 30,
-    message: {
-        message: 'Too many write requests, please try again later',
-    },
-    standardHeaders: 'draft-8',
-    legacyHeaders: false,
-    skip: skipInTest,
+    message: 'Too many write requests, please try again later',
+});
+
+/**
+ * Rate limiter específico para creación de pedidos.
+ *
+ * Tiene su propio contador independiente del backoffice: crear productos o
+ * subir imágenes no consume el cupo de checkout.
+ */
+export const orderLimiter = createLimiter({
+    limit: 30,
+    message: 'Too many order requests, please try again later',
 });
