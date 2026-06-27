@@ -4,7 +4,7 @@ import { authMiddleware } from '../middlewares/auth.middleware.js';
 import { roleMiddleware } from '../middlewares/role.middleware.js';
 import { validate } from '../middlewares/validate.middleware.js';
 import { validateObjectId } from '../middlewares/objectid.middleware.js';
-import { writeLimiter } from '../middlewares/ratelimit.middleware.js';
+import { orderLimiter } from '../middlewares/ratelimit.middleware.js';
 import {
     createOrderSchema,
     updateOrderSchema,
@@ -136,7 +136,7 @@ ordersRouter.get('/client/:email', authMiddleware, listOrdersByEmail);
 ordersRouter.get('/:id', validateObjectId, authMiddleware, getOrder);
 ordersRouter.post(
     '/',
-    writeLimiter,
+    orderLimiter,
     authMiddleware,
     validate(createOrderSchema),
     createOrder,
