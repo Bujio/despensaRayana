@@ -28,9 +28,19 @@ const offerSchema = z
         bundleQuantity: z.number().int().min(0).optional().default(0),
         bundlePayQuantity: z.number().int().min(0).optional().default(0),
         label: z.string().trim().max(120).optional(),
+        validFrom: z.coerce.date().optional(),
+        validUntil: z.coerce.date().optional(),
         active: z.boolean().optional().default(false),
     })
     .superRefine((offer, ctx) => {
+        if (offer.validFrom && offer.validUntil && offer.validUntil < offer.validFrom) {
+            ctx.addIssue({
+                code: 'custom',
+                path: ['validUntil'],
+                message: 'Offer end date must be after the start date',
+            });
+        }
+
         if (offer.type === 'percent' && (offer.value <= 0 || offer.value > 100)) {
             ctx.addIssue({
                 code: 'custom',
