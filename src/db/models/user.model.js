@@ -31,6 +31,9 @@ const userSchema = new Schema(
             codePostal: {
                 type: String,
             },
+            city: {
+                type: String,
+            },
         },
         role: { type: String, enum: ['user', 'admin'], default: 'user' },
         // Verificación de email: hasta que el usuario confirme el enlace
