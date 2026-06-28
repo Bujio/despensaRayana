@@ -21,8 +21,8 @@ const REQUIRED_ENV_VARS = [
 export const validateEnv = () => {
     const missing = REQUIRED_ENV_VARS.filter((key) => !process.env[key]);
 
-    if (!process.env.MONGODB_URI2 && !process.env.MONGO_URI) {
-        missing.unshift('MONGODB_URI2 or MONGO_URI');
+    if (!process.env.MONGODB_URI2 && !process.env.MONGO_URI && !process.env.MONGODB_URI) {
+        missing.unshift('MONGODB_URI2, MONGO_URI or MONGODB_URI');
     }
 
     if (missing.length > 0) {
