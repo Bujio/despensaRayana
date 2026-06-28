@@ -10,7 +10,6 @@
  * Por eso usamos console.error directamente con el disable de ESLint.
  */
 const REQUIRED_ENV_VARS = [
-    'MONGODB_URI2',
     'JWT_SECRET',
     'EMAIL_HOST',
     'EMAIL_PORT',
@@ -21,6 +20,10 @@ const REQUIRED_ENV_VARS = [
 
 export const validateEnv = () => {
     const missing = REQUIRED_ENV_VARS.filter((key) => !process.env[key]);
+
+    if (!process.env.MONGODB_URI2 && !process.env.MONGO_URI) {
+        missing.unshift('MONGODB_URI2 or MONGO_URI');
+    }
 
     if (missing.length > 0) {
         /* eslint-disable no-console */
