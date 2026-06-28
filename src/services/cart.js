@@ -16,6 +16,33 @@ const findProductOr404 = async (sku) => {
     return product;
 };
 
+const getOfferPrice = (product) => {
+    const price = Number(product.price || 0);
+    const offer = product.offer;
+    if (!offer?.active || offer.type === 'none') return price;
+
+    if (offer.type === 'percent') {
+        return Math.max(price * (1 - Number(offer.value || 0) / 100), 0);
+    }
+
+    if (offer.type === 'amount') {
+        return Math.max(price - Number(offer.value || 0), 0);
+    }
+
+    if (
+        offer.type === 'bundle' &&
+        Number(offer.bundleQuantity) > 0 &&
+        Number(offer.bundlePayQuantity) > 0
+    ) {
+        return Math.max(
+            price * (Number(offer.bundlePayQuantity) / Number(offer.bundleQuantity)),
+            0,
+        );
+    }
+
+    return price;
+};
+
 /**
  * Lanza 400 si la cantidad solicitada excede el stock disponible.
  *
@@ -61,12 +88,13 @@ export const getCartService = async (userId) => {
  */
 export const addCartItemService = async (userId, sku, quantity) => {
     const product = await findProductOr404(sku);
+    const price = getOfferPrice(product);
 
     // Intentamos incrementar atómicamente la cantidad si el item ya está en el
     // carrito. Si matchedCount es 0 significa que no había línea con ese SKU.
     const incResult = await Cart.updateOne(
         { userId, 'items.sku': sku },
-        { $inc: { 'items.$.quantity': quantity } },
+        { $inc: { 'items.$.quantity': quantity }, $set: { 'items.$.price': price } },
     );
 
     if (incResult.matchedCount > 0) {
@@ -93,7 +121,7 @@ export const addCartItemService = async (userId, sku, quantity) => {
     assertEnoughStock(product, quantity);
     return await Cart.findOneAndUpdate(
         { userId },
-        { $push: { items: { sku, quantity, price: product.price } } },
+        { $push: { items: { sku, quantity, price } } },
         { returnDocument: 'after', upsert: true },
     );
 };
@@ -109,13 +137,14 @@ export const addCartItemService = async (userId, sku, quantity) => {
  */
 export const updateCartItemService = async (userId, sku, quantity) => {
     const product = await findProductOr404(sku);
+    const price = getOfferPrice(product);
     assertEnoughStock(product, quantity);
 
     // $set atómico sobre la línea concreta; el filtro 'items.sku' garantiza
     // que la operación solo actualiza si el SKU está presente en el carrito.
     const updated = await Cart.findOneAndUpdate(
         { userId, 'items.sku': sku },
-        { $set: { 'items.$.quantity': quantity } },
+        { $set: { 'items.$.quantity': quantity, 'items.$.price': price } },
         { returnDocument: 'after' },
     );
 
