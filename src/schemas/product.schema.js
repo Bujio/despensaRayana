@@ -21,6 +21,54 @@ const supplierSchema = z.object({
     images: z.array(imageSchema).max(20).optional(),
 });
 
+const offerSchema = z
+    .object({
+        type: z.enum(['none', 'percent', 'amount', 'bundle']).default('none'),
+        value: z.number().min(0).optional().default(0),
+        bundleQuantity: z.number().int().min(0).optional().default(0),
+        bundlePayQuantity: z.number().int().min(0).optional().default(0),
+        label: z.string().trim().max(120).optional(),
+        active: z.boolean().optional().default(false),
+    })
+    .superRefine((offer, ctx) => {
+        if (offer.type === 'percent' && (offer.value <= 0 || offer.value > 100)) {
+            ctx.addIssue({
+                code: 'custom',
+                path: ['value'],
+                message: 'Percent offers must be between 1 and 100',
+            });
+        }
+
+        if (offer.type === 'amount' && offer.value <= 0) {
+            ctx.addIssue({
+                code: 'custom',
+                path: ['value'],
+                message: 'Amount offers must be greater than 0',
+            });
+        }
+
+        if (offer.type === 'bundle') {
+            if (offer.bundleQuantity < 2) {
+                ctx.addIssue({
+                    code: 'custom',
+                    path: ['bundleQuantity'],
+                    message: 'Bundle quantity must be at least 2',
+                });
+            }
+            if (
+                offer.bundlePayQuantity < 1 ||
+                offer.bundlePayQuantity >= offer.bundleQuantity
+            ) {
+                ctx.addIssue({
+                    code: 'custom',
+                    path: ['bundlePayQuantity'],
+                    message: 'Bundle pay quantity must be lower than bundle quantity',
+                });
+            }
+        }
+    })
+    .optional();
+
 /**
  * Validador reutilizable de ObjectId de MongoDB.
  * Zod no distingue strings de ObjectId por defecto; con este refine devolvemos
@@ -63,6 +111,7 @@ export const createProductSchema = z.object({
         .number({ error: 'Stock is required' })
         .int('Stock must be an integer')
         .min(0, 'Stock cannot be negative'),
+    offer: offerSchema,
     supplier: supplierSchema,
 });
 
