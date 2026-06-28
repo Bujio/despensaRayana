@@ -9,7 +9,7 @@ import { swaggerSpec } from './src/docs/swagger.js';
 const app = express();
 
 // helmet añade cabeceras HTTP de seguridad (X-Frame-Options, CSP, etc.)
-app.use(helmet());
+app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
 // cors permite peticiones solo desde el origen del frontend.
 // CORS_ORIGIN debe definirse en .env; si no existe se bloquea todo por defecto.
 app.use(
@@ -20,6 +20,8 @@ app.use(
 );
 // Parsea el body de las peticiones JSON y lo deja disponible en req.body
 app.use(express.json());
+// Sirve las imágenes guardadas localmente cuando Cloudinary no está configurado.
+app.use('/uploads', express.static('uploads'));
 // morgan registra cada petición en consola.
 // 'dev' en desarrollo (colorido y conciso); 'combined' en producción (Apache format, más detallado).
 app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
