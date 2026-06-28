@@ -10,11 +10,28 @@ const app = express();
 
 // helmet añade cabeceras HTTP de seguridad (X-Frame-Options, CSP, etc.)
 app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
-// cors permite peticiones solo desde el origen del frontend.
-// CORS_ORIGIN debe definirse en .env; si no existe se bloquea todo por defecto.
+const defaultCorsOrigins = [
+    'http://localhost:5173',
+    'http://127.0.0.1:5173',
+];
+
+const allowedCorsOrigins = [
+    ...defaultCorsOrigins,
+    ...(process.env.CORS_ORIGIN || '').split(','),
+]
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+
+// cors permite peticiones desde los orígenes configurados para el frontend.
 app.use(
     cors({
-        origin: process.env.CORS_ORIGIN || false,
+        origin(origin, callback) {
+            if (!origin || allowedCorsOrigins.includes(origin)) {
+                callback(null, true);
+                return;
+            }
+            callback(new Error('Not allowed by CORS'));
+        },
         credentials: true,
     }),
 );
