@@ -28,6 +28,16 @@ const orderProductSchema = z.object({
     total: z.number().nonnegative().optional(),
 });
 
+const shippingAddressSchema = z
+    .object({
+        street: z.string().trim().min(3).max(160),
+        codePostal: z.string().trim().regex(/^\d{5}$/),
+        city: z.string().trim().min(2).max(80),
+        country: z.string().trim().min(2).max(80),
+        phone: z.string().trim().min(6).max(30),
+    })
+    .optional();
+
 /**
  * Schema para crear un pedido.
  * El email se normaliza a minúsculas para coincidir con el modelo (lowercase: true).
@@ -42,6 +52,7 @@ export const createOrderSchema = z.object({
         .max(254)
         .transform((val) => val.toLowerCase().trim()),
     date: z.coerce.date().optional(),
+    shippingAddress: shippingAddressSchema,
     products: z
         .array(orderProductSchema)
         .min(1, 'The order must contain at least one product')
