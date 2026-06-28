@@ -24,6 +24,17 @@ const ProductsOrderSchema = new Schema({
     },
 });
 
+const ShippingAddressSchema = new Schema(
+    {
+        street: { type: String, trim: true },
+        codePostal: { type: String, trim: true },
+        city: { type: String, trim: true },
+        country: { type: String, trim: true },
+        phone: { type: String, trim: true },
+    },
+    { _id: false },
+);
+
 // Estados posibles de un pedido y las transiciones permitidas entre ellos:
 //
 //   pending → processing → shipped → delivered
@@ -74,6 +85,7 @@ const OrderSchema = new Schema(
                 'Debe indicar un email válido',
             ],
         },
+        shippingAddress: ShippingAddressSchema,
         products: [ProductsOrderSchema],
         discount: {
             type: Number,
