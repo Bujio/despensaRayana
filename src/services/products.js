@@ -6,6 +6,20 @@ import { Product } from '../db/models/product.model.js';
  */
 const SORTABLE_FIELDS = new Set(['name', 'price', 'stock', 'createdAt']);
 
+const getApiBaseUrl = () => {
+    const configured = process.env.PUBLIC_API_URL || process.env.API_BASE_URL;
+    if (configured) return configured.replace(/\/$/, '');
+
+    const host = process.env.HOST || 'localhost';
+    const port = process.env.PORT || 3000;
+    return `http://${host}:${port}`;
+};
+
+const getImageUrl = (file) => {
+    if (file.path?.startsWith('http')) return file.path;
+    return `${getApiBaseUrl()}/uploads/products/${file.filename}`;
+};
+
 /**
  * Obtiene un producto por su ID, poblando el nombre y slug de su categoría.
  *
@@ -21,7 +35,7 @@ export const getProductService = async (id) => {
  *
  * Soporta:
  *   - `categoryId` → filtro por categoría
- *   - `search`     → búsqueda full-text sobre name + description (usa text index)
+ *   - `search`     → búsqueda full-text sobre nombre y descripción (usa text index)
  *   - `inStock`    → true solo devuelve productos con stock > 0
  *   - `minPrice` / `maxPrice` → rango de precio
  *   - `sort`       → campo por el que ordenar (whitelist)
@@ -124,8 +138,8 @@ export const deleteProductService = async (id) => {
 };
 
 /**
- * Añade imágenes subidas a Cloudinary al array supplier.images del producto.
- * Cada archivo procesado por multer-storage-cloudinary incluye path (URL) y filename.
+ * Añade imágenes subidas a Cloudinary o al almacenamiento local del backend.
+ * Cloudinary devuelve una URL en file.path; el fallback local usa file.filename.
  *
  * @param {string} id - ID de MongoDB del producto
  * @param {Express.Multer.File[]} files - Archivos procesados por multer
@@ -133,8 +147,8 @@ export const deleteProductService = async (id) => {
  */
 export const addProductImagesService = async (id, files) => {
     const newImages = files.map((file) => ({
-        url: file.path, // URL pública de Cloudinary
-        name: file.filename, // public_id en Cloudinary
+        url: getImageUrl(file),
+        name: file.filename || file.originalname || 'Imagen del producto',
     }));
 
     return await Product.findByIdAndUpdate(
