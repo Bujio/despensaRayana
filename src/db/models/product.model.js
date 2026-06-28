@@ -37,6 +37,12 @@ const OfferSchema = new mongoose.Schema(
             type: String,
             trim: true,
         },
+        validFrom: {
+            type: Date,
+        },
+        validUntil: {
+            type: Date,
+        },
         active: {
             type: Boolean,
             default: false,
