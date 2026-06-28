@@ -48,6 +48,13 @@ export const VALID_TRANSITIONS = {
 
 const OrderSchema = new Schema(
     {
+        // Usuario propietario del pedido. Los pedidos antiguos pueden no tenerlo,
+        // por eso los controllers mantienen fallback por email.
+        userId: {
+            type: Schema.Types.ObjectId,
+            ref: 'User',
+            index: true,
+        },
         // Estado actual del pedido. Por defecto 'pending' al crearse.
         status: {
             type: String,
