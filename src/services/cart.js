@@ -16,10 +16,19 @@ const findProductOr404 = async (sku) => {
     return product;
 };
 
+const isOfferActive = (offer, now = new Date()) => {
+    if (!offer?.active || offer.type === 'none') return false;
+
+    if (offer.validFrom && now < new Date(offer.validFrom)) return false;
+    if (offer.validUntil && now > new Date(offer.validUntil)) return false;
+
+    return true;
+};
+
 const getOfferPrice = (product) => {
     const price = Number(product.price || 0);
     const offer = product.offer;
-    if (!offer?.active || offer.type === 'none') return price;
+    if (!isOfferActive(offer)) return price;
 
     if (offer.type === 'percent') {
         return Math.max(price * (1 - Number(offer.value || 0) / 100), 0);
@@ -162,7 +171,6 @@ export const updateCartItemService = async (userId, sku, quantity) => {
  * Elimina un producto del carrito.
  *
  * @param {string} userId
- * @param {string} sku
  * @returns {Promise<Cart>} El carrito actualizado
  * @throws {HttpError} Si el carrito no existe
  */
