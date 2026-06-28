@@ -11,6 +11,40 @@ const ImagesSchema = new mongoose.Schema({
     },
 });
 
+const OfferSchema = new mongoose.Schema(
+    {
+        type: {
+            type: String,
+            enum: ['none', 'percent', 'amount', 'bundle'],
+            default: 'none',
+        },
+        value: {
+            type: Number,
+            min: 0,
+            default: 0,
+        },
+        bundleQuantity: {
+            type: Number,
+            min: 0,
+            default: 0,
+        },
+        bundlePayQuantity: {
+            type: Number,
+            min: 0,
+            default: 0,
+        },
+        label: {
+            type: String,
+            trim: true,
+        },
+        active: {
+            type: Boolean,
+            default: false,
+        },
+    },
+    { _id: false },
+);
+
 const ProductSchema = new mongoose.Schema(
     {
         name: {
@@ -36,6 +70,10 @@ const ProductSchema = new mongoose.Schema(
             required: [true, 'You must indicate the stock of the product'],
             min: [0, 'Stock cannot be negative'],
             default: 0,
+        },
+        offer: {
+            type: OfferSchema,
+            default: () => ({ type: 'none', active: false }),
         },
         // Referencia a la categoría del producto. Opcional para no romper
         // productos existentes. Se puebla con .populate() en las consultas.
