@@ -66,6 +66,23 @@ const supportsTransactions = () => {
 };
 
 /**
+ * Construye el filtro para listar los pedidos de un usuario autenticado.
+ * Los pedidos nuevos se asocian por userId. Los antiguos, que no tenían
+ * userId, se siguen encontrando por email para no perder histórico.
+ */
+const buildOwnedOrdersFilter = (email, userId) => {
+    if (!userId) return { email };
+
+    return {
+        $or: [
+            { userId },
+            { email, userId: { $exists: false } },
+            { email, userId: null },
+        ],
+    };
+};
+
+/**
  * Obtiene un pedido por su ID.
  *
  * @param {string} id - ID de MongoDB del pedido
@@ -91,16 +108,24 @@ export const listOrdersService = async ({ skip, limit }) => {
 };
 
 /**
- * Devuelve una página de pedidos asociados a un email de cliente.
+ * Devuelve una página de pedidos asociados a un cliente.
+ * Admin filtra por email; usuarios normales filtran por userId y mantienen
+ * fallback por email para pedidos antiguos sin userId.
  *
  * @param {string} email - Email del cliente
  * @param {{ skip: number, limit: number }} pagination - Parámetros de paginación
+ * @param {string|null} userId - ID del usuario autenticado, si aplica
  * @returns {Promise<{ data: Order[], total: number }>}
  */
-export const listOrdersByEmailService = async (email, { skip, limit }) => {
+export const listOrdersByEmailService = async (
+    email,
+    { skip, limit },
+    userId = null,
+) => {
+    const filter = buildOwnedOrdersFilter(email, userId);
     const [data, total] = await Promise.all([
-        Order.find({ email }).skip(skip).limit(limit),
-        Order.countDocuments({ email }),
+        Order.find(filter).skip(skip).limit(limit),
+        Order.countDocuments(filter),
     ]);
     return { data, total };
 };
