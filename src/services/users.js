@@ -1,5 +1,25 @@
 import bcrypt from 'bcryptjs';
 import { User } from '../db/models/user.model.js';
+import { Order } from '../db/models/order.model.js';
+
+const buildOrderCountFilter = (user) => ({
+    $or: [
+        { userId: user._id },
+        { email: user.email, userId: { $exists: false } },
+        { email: user.email, userId: null },
+    ],
+});
+
+const attachOrderCounts = async (users) => {
+    const counts = await Promise.all(
+        users.map((user) => Order.countDocuments(buildOrderCountFilter(user))),
+    );
+
+    return users.map((user, index) => ({
+        ...user.toObject(),
+        orderCount: counts[index],
+    }));
+};
 
 /**
  * Obtiene un usuario por su ID.
@@ -14,16 +34,18 @@ export const getUserService = async (id) => {
 
 /**
  * Devuelve una página de usuarios registrados.
- * Excluye el campo password de todos los documentos.
+ * Excluye el campo password de todos los documentos y añade orderCount para
+ * que el backoffice pueda mostrar cuántos pedidos ha hecho cada usuario.
  *
  * @param {{ skip: number, limit: number }} pagination - Parámetros de paginación
  * @returns {Promise<{ data: User[], total: number }>}
  */
 export const listUsersService = async ({ skip, limit }) => {
-    const [data, total] = await Promise.all([
+    const [users, total] = await Promise.all([
         User.find().select('-password').skip(skip).limit(limit),
         User.countDocuments(),
     ]);
+    const data = await attachOrderCounts(users);
     return { data, total };
 };
 
