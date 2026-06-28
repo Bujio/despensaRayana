@@ -8,6 +8,7 @@ const addressSchema = z.object({
     country: z.string().trim().min(2).max(100).optional(),
     street: z.string().trim().min(3).max(200).optional(),
     codePostal: z.string().trim().min(3).max(20).optional(),
+    city: z.string().trim().min(2).max(100).optional(),
 });
 
 /**
