@@ -1,6 +1,7 @@
 import {
     getHomeContentService,
     updateHomeContentService,
+    uploadHomeImagesService,
 } from '../services/home-content.js';
 
 export const homeContentController = () => {
@@ -25,8 +26,21 @@ export const homeContentController = () => {
         }
     };
 
+    const uploadHomeImages = async (req, res, next) => {
+        try {
+            if (!req.files?.length) {
+                return res.status(400).json({ message: 'No images provided' });
+            }
+            const images = await uploadHomeImagesService(req.files);
+            return res.status(200).json({ images });
+        } catch (error) {
+            next(error);
+        }
+    };
+
     return {
         getHomeContent,
         updateHomeContent,
+        uploadHomeImages,
     };
 };

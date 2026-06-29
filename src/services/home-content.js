@@ -1,5 +1,19 @@
 import { HomeContent } from '../db/models/home-content.model.js';
 
+const getApiBaseUrl = () => {
+    const configured = process.env.PUBLIC_API_URL || process.env.API_BASE_URL;
+    if (configured) return configured.replace(/\/$/, '');
+
+    const host = process.env.HOST || 'localhost';
+    const port = process.env.PORT || 3000;
+    return `http://${host}:${port}`;
+};
+
+const getImageUrl = (file) => {
+    if (file.path?.startsWith('http')) return file.path;
+    return `${getApiBaseUrl()}/uploads/products/${file.filename}`;
+};
+
 const defaultHomeContent = {
     key: 'homepage',
     hero: {
@@ -105,4 +119,11 @@ export const updateHomeContentService = async (data, userId) => {
             setDefaultsOnInsert: true,
         },
     ).lean();
+};
+
+export const uploadHomeImagesService = async (files) => {
+    return files.map((file) => ({
+        url: getImageUrl(file),
+        name: file.filename || file.originalname || 'Imagen de portada',
+    }));
 };
