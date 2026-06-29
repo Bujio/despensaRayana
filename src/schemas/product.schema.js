@@ -114,6 +114,7 @@ export const createProductSchema = z.object({
     price: z
         .number({ error: 'Price is required' })
         .positive('Price must be a positive number'),
+    shortDescription: z.string().trim().max(300).optional(),
     description: z.string().trim().max(5000).optional(),
     // ID de MongoDB de la categoría. Opcional al crear un producto.
     category: objectIdString.optional(),

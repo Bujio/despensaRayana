@@ -69,6 +69,10 @@ const ProductSchema = new mongoose.Schema(
         description: {
             type: String,
         },
+        shortDescription: {
+            type: String,
+            trim: true,
+        },
         // Unidades disponibles en almacén. Se descuenta al crear un pedido
         // y se repone al eliminarlo.
         stock: {
@@ -103,8 +107,8 @@ const ProductSchema = new mongoose.Schema(
 
 // Índice sobre category para acelerar el filtrado del catálogo por categoría.
 ProductSchema.index({ category: 1 });
-// Índice de texto para búsqueda full-text sobre nombre y descripción.
-ProductSchema.index({ name: 'text', description: 'text' });
+// Índice de texto para búsqueda full-text sobre nombre y descripciones.
+ProductSchema.index({ name: 'text', shortDescription: 'text', description: 'text' });
 
 ProductSchema.plugin(softDeletePlugin);
 
