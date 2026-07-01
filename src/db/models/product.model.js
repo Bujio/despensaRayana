@@ -99,6 +99,7 @@ const ProductSchema = new mongoose.Schema(
             name: String,
             images: [ImagesSchema],
         },
+        images: [ImagesSchema],
     },
     {
         timestamps: true,
@@ -108,7 +109,11 @@ const ProductSchema = new mongoose.Schema(
 // Índice sobre category para acelerar el filtrado del catálogo por categoría.
 ProductSchema.index({ category: 1 });
 // Índice de texto para búsqueda full-text sobre nombre y descripciones.
-ProductSchema.index({ name: 'text', shortDescription: 'text', description: 'text' });
+ProductSchema.index({
+    name: 'text',
+    shortDescription: 'text',
+    description: 'text',
+});
 
 ProductSchema.plugin(softDeletePlugin);
 

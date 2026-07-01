@@ -2,7 +2,7 @@ import { z } from 'zod';
 import mongoose from 'mongoose';
 
 /**
- * Schema para cada imagen del proveedor.
+ * Schema para cada imagen del producto o proveedor.
  * La URL es obligatoria; el nombre es descriptivo y opcional.
  */
 const imageSchema = z.object({
@@ -33,7 +33,11 @@ const offerSchema = z
         active: z.boolean().optional().default(false),
     })
     .superRefine((offer, ctx) => {
-        if (offer.validFrom && offer.validUntil && offer.validUntil < offer.validFrom) {
+        if (
+            offer.validFrom &&
+            offer.validUntil &&
+            offer.validUntil < offer.validFrom
+        ) {
             ctx.addIssue({
                 code: 'custom',
                 path: ['validUntil'],
@@ -41,7 +45,10 @@ const offerSchema = z
             });
         }
 
-        if (offer.type === 'percent' && (offer.value <= 0 || offer.value > 100)) {
+        if (
+            offer.type === 'percent' &&
+            (offer.value <= 0 || offer.value > 100)
+        ) {
             ctx.addIssue({
                 code: 'custom',
                 path: ['value'],
@@ -72,7 +79,8 @@ const offerSchema = z
                 ctx.addIssue({
                     code: 'custom',
                     path: ['bundlePayQuantity'],
-                    message: 'Bundle pay quantity must be lower than bundle quantity',
+                    message:
+                        'Bundle pay quantity must be lower than bundle quantity',
                 });
             }
         }
@@ -124,6 +132,7 @@ export const createProductSchema = z.object({
         .min(0, 'Stock cannot be negative'),
     offer: offerSchema,
     supplier: supplierSchema,
+    images: z.array(imageSchema).max(20).optional(),
 });
 
 /**
