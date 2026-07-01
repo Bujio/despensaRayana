@@ -10,6 +10,11 @@ const CLOUDINARY_PLACEHOLDERS = new Set([
     'your_api_key',
     'your_api_secret',
 ]);
+const ALLOWED_IMAGE_TYPES = new Map([
+    ['image/jpeg', new Set(['.jpg', '.jpeg'])],
+    ['image/png', new Set(['.png'])],
+    ['image/webp', new Set(['.webp'])],
+]);
 
 const hasCloudinaryConfig = [
     process.env.CLOUDINARY_CLOUD_NAME,
@@ -47,8 +52,11 @@ const localStorage = multer.diskStorage({
         cb(null, uploadDir);
     },
     filename: (_req, file, cb) => {
-        const ext = path.extname(file.originalname).toLowerCase() || '.jpg';
-        cb(null, `${Date.now()}-${crypto.randomUUID()}${ext}`);
+        const ext = path.extname(file.originalname).toLowerCase();
+        const safeExt = ALLOWED_IMAGE_TYPES.get(file.mimetype)?.has(ext)
+            ? ext
+            : '.jpg';
+        cb(null, `${Date.now()}-${crypto.randomUUID()}${safeExt}`);
     },
 });
 
@@ -62,10 +70,16 @@ const localStorage = multer.diskStorage({
  */
 export const upload = multer({
     storage: hasCloudinaryConfig ? cloudinaryStorage : localStorage,
-    limits: { fileSize: 5 * 1024 * 1024 }, // máximo 5 MB por imagen
+    limits: {
+        fileSize: 5 * 1024 * 1024, // máximo 5 MB por imagen
+        files: 5,
+        fields: 20,
+    },
     fileFilter: (_req, file, cb) => {
-        if (!file.mimetype.startsWith('image/')) {
-            return cb(new Error('Only image files are allowed'));
+        const ext = path.extname(file.originalname).toLowerCase();
+        const allowedExts = ALLOWED_IMAGE_TYPES.get(file.mimetype);
+        if (!allowedExts?.has(ext)) {
+            return cb(new Error('Only JPG, PNG or WebP images are allowed'));
         }
         cb(null, true);
     },

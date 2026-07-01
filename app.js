@@ -4,22 +4,30 @@ import helmet from 'helmet';
 import morgan from 'morgan';
 import swaggerUi from 'swagger-ui-express';
 import { router } from './src/routes/index.js';
+import { apiLimiter } from './src/middlewares/ratelimit.middleware.js';
 import { swaggerSpec } from './src/docs/swagger.js';
 
 const app = express();
 
+app.disable('x-powered-by');
+
 // helmet añade cabeceras HTTP de seguridad (X-Frame-Options, CSP, etc.)
 app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
-const defaultCorsOrigins = [
-    'http://localhost:5173',
-    'http://127.0.0.1:5173',
-];
+const isProduction = process.env.NODE_ENV === 'production';
+const defaultCorsOrigins = isProduction
+    ? []
+    : [
+          'http://localhost:5173',
+          'http://127.0.0.1:5173',
+          'http://localhost:5174',
+          'http://127.0.0.1:5174',
+      ];
 
 const allowedCorsOrigins = [
     ...defaultCorsOrigins,
-    ...(process.env.CORS_ORIGIN || '').split(','),
+    ...(process.env.CORS_ORIGIN || process.env.CLIENT_URL || '').split(','),
 ]
-    .map((origin) => origin.trim())
+    .map((origin) => origin.trim().replace(//$/, ''))
     .filter(Boolean);
 
 // cors permite peticiones desde los orígenes configurados para el frontend.
@@ -30,13 +38,21 @@ app.use(
                 callback(null, true);
                 return;
             }
-            callback(new Error('Not allowed by CORS'));
+            const error = new Error('Not allowed by CORS');
+            error.status = 403;
+            callback(error);
         },
-        credentials: true,
+        credentials: process.env.CORS_CREDENTIALS === 'true',
     }),
 );
-// Parsea el body de las peticiones JSON y lo deja disponible en req.body
-app.use(express.json());
+// Parsea el body de las peticiones con límites explícitos para reducir abuso.
+app.use(express.json({ limit: process.env.JSON_BODY_LIMIT || '100kb' }));
+app.use(
+    express.urlencoded({
+        extended: false,
+        limit: process.env.URLENCODED_BODY_LIMIT || '50kb',
+    }),
+);
 // Sirve las imágenes guardadas localmente cuando Cloudinary no está configurado.
 app.use('/uploads', express.static('uploads'));
 // morgan registra cada petición en consola.
@@ -56,7 +72,7 @@ app.use(
 );
 
 // Todas las rutas de la API están bajo el prefijo /api
-app.use('/api', router);
+app.use('/api', apiLimiter, router);
 
 // Captura cualquier ruta que no haya sido definida
 app.use((_req, res) => {

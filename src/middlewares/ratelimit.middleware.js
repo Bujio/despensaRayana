@@ -7,15 +7,20 @@ import { rateLimit } from 'express-rate-limit';
  */
 export const skipInTest = () => process.env.NODE_ENV === 'test';
 
-const createLimiter = ({ limit, message }) =>
+const createLimiter = ({ limit, message, windowMs = 15 * 60 * 1000 }) =>
     rateLimit({
-        windowMs: 15 * 60 * 1000,
+        windowMs,
         limit,
         message: { message },
         standardHeaders: 'draft-8',
         legacyHeaders: false,
         skip: skipInTest,
     });
+
+export const apiLimiter = createLimiter({
+    limit: Number(process.env.API_RATE_LIMIT || 300),
+    message: 'Too many requests, please try again later',
+});
 
 /**
  * Rate limiter para endpoints de escritura administrativa de recursos

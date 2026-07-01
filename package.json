@@ -8,8 +8,11 @@
     "main": "index.js",
     "scripts": {
         "dev": "node --watch index.js",
+        "start": "node index.js",
         "test": "cross-env NODE_OPTIONS=--experimental-vm-modules jest --runInBand --forceExit",
         "test:watch": "cross-env NODE_OPTIONS=--experimental-vm-modules jest --watch",
+        "lint": "eslint .",
+        "audit": "npm audit --audit-level=moderate",
         "prepare": "husky"
     },
     "jest": {
