@@ -2,7 +2,6 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { v2 as cloudinary } from 'cloudinary';
-import { CloudinaryStorage } from 'multer-storage-cloudinary';
 import multer from 'multer';
 
 const CLOUDINARY_PLACEHOLDERS = new Set([
@@ -16,7 +15,7 @@ const ALLOWED_IMAGE_TYPES = new Map([
     ['image/webp', new Set(['.webp'])],
 ]);
 
-const hasCloudinaryConfig = [
+export const hasCloudinaryConfig = [
     process.env.CLOUDINARY_CLOUD_NAME,
     process.env.CLOUDINARY_API_KEY,
     process.env.CLOUDINARY_API_SECRET,
@@ -33,17 +32,6 @@ if (hasCloudinaryConfig) {
         api_secret: process.env.CLOUDINARY_API_SECRET,
     });
 }
-
-const cloudinaryStorage = new CloudinaryStorage({
-    cloudinary,
-    params: {
-        folder: 'products',
-        allowed_formats: ['jpg', 'jpeg', 'png', 'webp'],
-        transformation: [
-            { width: 800, crop: 'limit', format: 'webp', quality: 'auto' },
-        ],
-    },
-});
 
 const uploadDir = path.resolve('uploads/products');
 const localStorage = multer.diskStorage({
@@ -68,8 +56,10 @@ const localStorage = multer.diskStorage({
  * Uso en una ruta:
  *   router.post('/:id/images', authMiddleware, upload, uploadImagesController)
  */
+export { cloudinary };
+
 export const upload = multer({
-    storage: hasCloudinaryConfig ? cloudinaryStorage : localStorage,
+    storage: hasCloudinaryConfig ? multer.memoryStorage() : localStorage,
     limits: {
         fileSize: 5 * 1024 * 1024, // máximo 5 MB por imagen
         files: 5,

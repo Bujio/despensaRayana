@@ -1,4 +1,8 @@
 import { Product } from '../db/models/product.model.js';
+import {
+    cloudinary,
+    hasCloudinaryConfig,
+} from '../middlewares/upload.middleware.js';
 
 /**
  * Campos por los que se permite ordenar el listado de productos.
@@ -19,6 +23,38 @@ const getImageUrl = (file) => {
     if (file.path?.startsWith('http')) return file.path;
     return `${getApiBaseUrl()}/uploads/products/${file.filename}`;
 };
+
+const uploadBufferToCloudinary = (file) =>
+    new Promise((resolve, reject) => {
+        const stream = cloudinary.uploader.upload_stream(
+            {
+                folder: 'products',
+                resource_type: 'image',
+                transformation: [
+                    {
+                        width: 800,
+                        crop: 'limit',
+                        fetch_format: 'webp',
+                        quality: 'auto',
+                    },
+                ],
+            },
+            (error, result) => {
+                if (error) {
+                    reject(error);
+                    return;
+                }
+                resolve({
+                    url: result.secure_url,
+                    name:
+                        file.originalname ||
+                        result.public_id ||
+                        'Imagen del producto',
+                });
+            },
+        );
+        stream.end(file.buffer);
+    });
 
 /**
  * Obtiene un producto por su ID, poblando el nombre y slug de su categoría.
@@ -146,14 +182,16 @@ export const deleteProductService = async (id) => {
  * @returns {Promise<Product|null>} El producto actualizado o null si no existe
  */
 export const addProductImagesService = async (id, files) => {
-    const newImages = files.map((file) => ({
-        url: getImageUrl(file),
-        name: file.filename || file.originalname || 'Imagen del producto',
-    }));
+    const newImages = hasCloudinaryConfig
+        ? await Promise.all(files.map(uploadBufferToCloudinary))
+        : files.map((file) => ({
+              url: getImageUrl(file),
+              name: file.filename || file.originalname || 'Imagen del producto',
+          }));
 
     return await Product.findByIdAndUpdate(
         id,
-        { $push: { 'supplier.images': { $each: newImages } } },
+        { $push: { images: { $each: newImages } } },
         { new: true },
     );
 };
