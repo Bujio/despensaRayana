@@ -1,3 +1,4 @@
+import fs from 'node:fs/promises';
 import { Product } from '../db/models/product.model.js';
 import {
     cloudinary,
@@ -24,37 +25,32 @@ const getImageUrl = (file) => {
     return `${getApiBaseUrl()}/uploads/products/${file.filename}`;
 };
 
-const uploadBufferToCloudinary = (file) =>
-    new Promise((resolve, reject) => {
-        const stream = cloudinary.uploader.upload_stream(
+const mapLocalImage = (file) => ({
+    url: getImageUrl(file),
+    name: file.originalname || file.filename || 'Imagen del producto',
+});
+
+const uploadFileToCloudinary = async (file) => {
+    const result = await cloudinary.uploader.upload(file.path, {
+        folder: 'products',
+        resource_type: 'image',
+        transformation: [
             {
-                folder: 'products',
-                resource_type: 'image',
-                transformation: [
-                    {
-                        width: 800,
-                        crop: 'limit',
-                        fetch_format: 'webp',
-                        quality: 'auto',
-                    },
-                ],
+                width: 800,
+                crop: 'limit',
+                fetch_format: 'webp',
+                quality: 'auto',
             },
-            (error, result) => {
-                if (error) {
-                    reject(error);
-                    return;
-                }
-                resolve({
-                    url: result.secure_url,
-                    name:
-                        file.originalname ||
-                        result.public_id ||
-                        'Imagen del producto',
-                });
-            },
-        );
-        stream.end(file.buffer);
+        ],
     });
+
+    await fs.unlink(file.path).catch(() => {});
+
+    return {
+        url: result.secure_url,
+        name: file.originalname || result.public_id || 'Imagen del producto',
+    };
+};
 
 /**
  * Obtiene un producto por su ID, poblando el nombre y slug de su categoría.
@@ -182,12 +178,17 @@ export const deleteProductService = async (id) => {
  * @returns {Promise<Product|null>} El producto actualizado o null si no existe
  */
 export const addProductImagesService = async (id, files) => {
-    const newImages = hasCloudinaryConfig
-        ? await Promise.all(files.map(uploadBufferToCloudinary))
-        : files.map((file) => ({
-              url: getImageUrl(file),
-              name: file.filename || file.originalname || 'Imagen del producto',
-          }));
+    const newImages = await Promise.all(
+        files.map(async (file) => {
+            if (!hasCloudinaryConfig) return mapLocalImage(file);
+
+            try {
+                return await uploadFileToCloudinary(file);
+            } catch {
+                return mapLocalImage(file);
+            }
+        }),
+    );
 
     return await Product.findByIdAndUpdate(
         id,

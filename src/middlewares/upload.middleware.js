@@ -13,6 +13,7 @@ const ALLOWED_IMAGE_TYPES = new Map([
     ['image/jpeg', new Set(['.jpg', '.jpeg'])],
     ['image/png', new Set(['.png'])],
     ['image/webp', new Set(['.webp'])],
+    ['image/avif', new Set(['.avif'])],
 ]);
 
 export const hasCloudinaryConfig = [
@@ -59,7 +60,7 @@ const localStorage = multer.diskStorage({
 export { cloudinary };
 
 export const upload = multer({
-    storage: hasCloudinaryConfig ? multer.memoryStorage() : localStorage,
+    storage: localStorage,
     limits: {
         fileSize: 5 * 1024 * 1024, // máximo 5 MB por imagen
         files: 5,
@@ -69,7 +70,9 @@ export const upload = multer({
         const ext = path.extname(file.originalname).toLowerCase();
         const allowedExts = ALLOWED_IMAGE_TYPES.get(file.mimetype);
         if (!allowedExts?.has(ext)) {
-            return cb(new Error('Only JPG, PNG or WebP images are allowed'));
+            return cb(
+                new Error('Only JPG, PNG, WebP or AVIF images are allowed'),
+            );
         }
         cb(null, true);
     },
