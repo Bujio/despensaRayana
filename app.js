@@ -27,7 +27,7 @@ const allowedCorsOrigins = [
     ...defaultCorsOrigins,
     ...(process.env.CORS_ORIGIN || process.env.CLIENT_URL || '').split(','),
 ]
-    .map((origin) => origin.trim().replace(//$/, ''))
+    .map((origin) => origin.trim().replace(/\/$/, ''))
     .filter(Boolean);
 
 // cors permite peticiones desde los orígenes configurados para el frontend.
