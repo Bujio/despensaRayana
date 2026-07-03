@@ -19,12 +19,13 @@ REST API for a local-products online store from the comarca of Valencia de Alcá
 ## Features
 
 - JWT authentication with access + refresh token rotation and reuse-attack detection.
-- Role-based access control (`user`, `admin`).
+- Role-based access control (`user`, `supplier`, `admin`).
 - Email verification flow on registration with resend support (24 h token TTL).
 - Product catalogue with categories, pagination, full-text search, price range and stock filters.
 - Per-user shopping cart with atomic SKU-based operations.
 - Order workflow with a strict state machine and atomic stock decrement (no negative stock under concurrent orders).
 - Image upload to Cloudinary (up to 5 per product).
+- Supplier onboarding, admin review workflow, supplier-owned product management and supplier-only reports.
 - Transactional emails on registration, order creation and status changes.
 - OpenAPI (Swagger UI) docs served at `/api/docs`.
 - Integration test suite (Jest + mongodb-memory-server + supertest).
@@ -59,18 +60,21 @@ despensa-rayana/
 └── src/
     ├── db/
     │   ├── init.js                   # MongoDB connection
-    │   └── models/
-    │       ├── user.model.js
-    │       ├── product.model.js
+│   └── models/
+│       ├── user.model.js
+│       ├── supplier.model.js
+│       ├── product.model.js
     │       ├── order.model.js        # Includes VALID_TRANSITIONS state machine
     │       ├── cart.model.js
     │       ├── category.model.js
     │       └── refresh-token.model.js
     ├── controllers/                  # HTTP layer (req/res)
     ├── services/                     # Business logic and DB access
-    │   ├── auth.js                   # register / login / refresh / logout / email verify
-    │   ├── users.js
-    │   ├── products.js
+│   ├── auth.js                   # register / login / refresh / logout / email verify
+│   ├── users.js
+│   ├── suppliers.js               # supplier onboarding and review
+│   ├── supplier-reports.js         # supplier-only sales/orders/product reports
+│   ├── products.js
     │   ├── orders.js                 # Atomic stock decrement + rollback
     │   ├── cart.js
     │   ├── categories.js
@@ -80,6 +84,8 @@ despensa-rayana/
     │   ├── auth.routes.js
     │   ├── users.routes.js
     │   ├── products.routes.js
+    │   ├── suppliers.routes.js
+    │   ├── supplier.routes.js
     │   ├── orders.routes.js
     │   ├── cart.routes.js
     │   └── categories.routes.js
@@ -207,6 +213,62 @@ The access token expires in **15 minutes**. Use `POST /refresh` with the refresh
 
 ---
 
+### Supplier onboarding and review
+
+Suppliers are first-class users with role `supplier`. A supplier registration creates:
+
+- a `User` with role `supplier`
+- a `Supplier` profile linked by `userId`
+- a unique 6-character `supplierCode`
+- initial supplier status `pending_review`
+
+Supplier statuses:
+
+| Status           | Meaning                                                 |
+| ---------------- | ------------------------------------------------------- |
+| `draft`          | Profile not ready                                       |
+| `pending_review` | Waiting for admin review; supplier can prepare products |
+| `active`         | Approved supplier                                       |
+| `inactive`       | Temporarily disabled; cannot create products            |
+| `rejected`       | Rejected supplier; cannot create products               |
+
+Supplier profile fields include business identity, origin, contact, fiscal data, logo, main image, gallery and certifications. Suppliers cannot edit `supplierCode`, `status`, `featured`, `internalNotes`, `reviewedAt`, `reviewedBy` or `rejectionReason`.
+
+| Method | Route                           | Description                              | Access   |
+| ------ | ------------------------------- | ---------------------------------------- | -------- |
+| POST   | `/suppliers/register`           | Register supplier request                | Public   |
+| GET    | `/suppliers/me`                 | Read own supplier profile                | Supplier |
+| PATCH  | `/suppliers/me`                 | Update allowed own supplier profile data | Supplier |
+| POST   | `/suppliers/me/logo`            | Upload supplier logo                     | Supplier |
+| POST   | `/suppliers/me/images`          | Upload supplier gallery images           | Supplier |
+| GET    | `/suppliers`                    | List suppliers                           | Admin    |
+| GET    | `/suppliers/:id`                | Supplier detail with products            | Admin    |
+| PATCH  | `/suppliers/:id/approve`        | Approve supplier                         | Admin    |
+| PATCH  | `/suppliers/:id/reject`         | Reject supplier                          | Admin    |
+| PATCH  | `/suppliers/:id/deactivate`     | Deactivate supplier                      | Admin    |
+| PATCH  | `/suppliers/:id/reactivate`     | Reactivate supplier                      | Admin    |
+| PATCH  | `/suppliers/:id/featured`       | Mark supplier as featured                | Admin    |
+| PATCH  | `/suppliers/:id/internal-notes` | Save internal admin notes                | Admin    |
+
+### Supplier products and reports
+
+Suppliers can only manage products linked to their own `supplierRef`. New supplier products can be `draft` or `pending_review`; suppliers cannot publish directly and cannot change `supplierRef`.
+
+| Method | Route                           | Description                              | Access   |
+| ------ | ------------------------------- | ---------------------------------------- | -------- |
+| GET    | `/products/supplier/my`         | List own products                        | Supplier |
+| POST   | `/products/supplier`            | Create own product                       | Supplier |
+| PATCH  | `/products/supplier/:id`        | Update own product                       | Supplier |
+| DELETE | `/products/supplier/:id`        | Soft-delete own product                  | Supplier |
+| POST   | `/products/supplier/:id/images` | Upload images for own product            | Supplier |
+| GET    | `/supplier/reports/sales`       | Supplier-only sales summary              | Supplier |
+| GET    | `/supplier/reports/products`    | Supplier-only product performance report | Supplier |
+| GET    | `/supplier/orders`              | Orders containing supplier products only | Supplier |
+
+Supplier reports never expose global store revenue or other suppliers' sales. For mixed orders, only the supplier's own order lines are returned.
+
+---
+
 ### Users — `/api/users`
 
 | Method | Route  | Description    | Access            |
@@ -220,14 +282,19 @@ The access token expires in **15 minutes**. Use `POST /refresh` with the refresh
 
 ### Products — `/api/products`
 
-| Method | Route         | Description                                                  | Access | Rate limit |
-| ------ | ------------- | ------------------------------------------------------------ | ------ | ---------- |
-| GET    | `/`           | List products (paginated)                                    | Public |            |
-| GET    | `/:id`        | Get product                                                  | Public |            |
-| POST   | `/`           | Create product                                               | Admin  | 30/15min   |
-| PATCH  | `/:id`        | Update product                                               | Admin  | 30/15min   |
-| DELETE | `/:id`        | Delete product                                               | Admin  | 30/15min   |
-| POST   | `/:id/images` | Upload images (`multipart/form-data`, field `images`, max 5) | Admin  | 30/15min   |
+| Method | Route                  | Description                                                  | Access   | Rate limit |
+| ------ | ---------------------- | ------------------------------------------------------------ | -------- | ---------- |
+| GET    | `/`                    | List products (paginated)                                    | Public   |            |
+| GET    | `/:id`                 | Get product                                                  | Public   |            |
+| POST   | `/`                    | Create product                                               | Admin    | 30/15min   |
+| PATCH  | `/:id`                 | Update product                                               | Admin    | 30/15min   |
+| DELETE | `/:id`                 | Delete product                                               | Admin    | 30/15min   |
+| POST   | `/:id/images`          | Upload images (`multipart/form-data`, field `images`, max 5) | Admin    | 30/15min   |
+| GET    | `/supplier/my`         | List own supplier products                                   | Supplier | 30/15min   |
+| POST   | `/supplier`            | Create own supplier product                                  | Supplier | 30/15min   |
+| PATCH  | `/supplier/:id`        | Update own supplier product                                  | Supplier | 30/15min   |
+| DELETE | `/supplier/:id`        | Delete own supplier product                                  | Supplier | 30/15min   |
+| POST   | `/supplier/:id/images` | Upload images for own supplier product                       | Supplier | 30/15min   |
 
 **Query params for listing:**
 

@@ -9,6 +9,16 @@ export const SUPPLIER_STATUSES = [
     'rejected',
 ];
 
+const imageSchema = new Schema(
+    {
+        url: String,
+        name: String,
+        alt: String,
+        isMain: Boolean,
+    },
+    { _id: false },
+);
+
 const supplierSchema = new Schema(
     {
         userId: {
@@ -36,6 +46,30 @@ const supplierSchema = new Schema(
             type: String,
             trim: true,
         },
+        slug: {
+            type: String,
+            trim: true,
+            lowercase: true,
+            index: true,
+        },
+        shortDescription: {
+            type: String,
+            trim: true,
+        },
+        story: {
+            type: String,
+            trim: true,
+        },
+        specialties: [
+            {
+                type: String,
+                trim: true,
+            },
+        ],
+        origin: {
+            type: String,
+            trim: true,
+        },
         email: {
             type: String,
             required: true,
@@ -51,6 +85,44 @@ const supplierSchema = new Schema(
             street: String,
             codePostal: String,
             city: String,
+        },
+        location: {
+            country: String,
+            region: String,
+            province: String,
+            comarca: String,
+            town: String,
+            postalCode: String,
+            address: String,
+            coordinates: {
+                lat: Number,
+                lng: Number,
+            },
+        },
+        contact: {
+            contactPerson: String,
+            email: String,
+            phone: String,
+            website: String,
+            instagram: String,
+            facebook: String,
+        },
+        business: {
+            taxName: String,
+            taxId: String,
+            invoiceEmail: String,
+        },
+        logo: imageSchema,
+        mainImage: imageSchema,
+        gallery: [imageSchema],
+        certifications: {
+            artisan: { type: Boolean, default: false },
+            ecological: { type: Boolean, default: false },
+            dop: { type: Boolean, default: false },
+            igp: { type: Boolean, default: false },
+            localProduct: { type: Boolean, default: false },
+            familyProduction: { type: Boolean, default: false },
+            noIntermediaries: { type: Boolean, default: false },
         },
         description: {
             type: String,

@@ -3,6 +3,7 @@ import { suppliersController } from '../controllers/suppliers.controllers.js';
 import { authMiddleware } from '../middlewares/auth.middleware.js';
 import { validateObjectId } from '../middlewares/objectid.middleware.js';
 import { roleMiddleware } from '../middlewares/role.middleware.js';
+import { upload } from '../middlewares/upload.middleware.js';
 import { validate } from '../middlewares/validate.middleware.js';
 import { writeLimiter } from '../middlewares/ratelimit.middleware.js';
 import {
@@ -25,6 +26,8 @@ const {
     setFeatured,
     setInternalNotes,
     updateMySupplier,
+    uploadMySupplierImages,
+    uploadMySupplierLogo,
 } = suppliersController();
 
 export const suppliersRouter = Router();
@@ -57,6 +60,24 @@ suppliersRouter.patch(
     roleMiddleware('supplier'),
     validate(updateSupplierProfileSchema),
     updateMySupplier,
+);
+
+suppliersRouter.post(
+    '/me/logo',
+    writeLimiter,
+    authMiddleware,
+    roleMiddleware('supplier'),
+    upload,
+    uploadMySupplierLogo,
+);
+
+suppliersRouter.post(
+    '/me/images',
+    writeLimiter,
+    authMiddleware,
+    roleMiddleware('supplier'),
+    upload,
+    uploadMySupplierImages,
 );
 
 suppliersRouter.get(

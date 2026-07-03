@@ -238,6 +238,37 @@ export const deleteSupplierProductService = async (userId, productId) => {
     return product;
 };
 
+export const addSupplierProductImagesService = async (
+    userId,
+    productId,
+    files,
+) => {
+    const supplier = await getWritableSupplier(userId);
+    const product = await Product.findOne({
+        _id: productId,
+        supplierRef: supplier._id,
+    });
+    if (!product) throw new HttpError('Product not found', 404);
+
+    const newImages = await Promise.all(
+        files.map(async (file) => {
+            if (!hasCloudinaryConfig) return mapLocalImage(file);
+
+            try {
+                return await uploadFileToCloudinary(file);
+            } catch {
+                return mapLocalImage(file);
+            }
+        }),
+    );
+
+    return await Product.findByIdAndUpdate(
+        productId,
+        { $push: { images: { $each: newImages } } },
+        { new: true, runValidators: true },
+    );
+};
+
 export const updateProductService = async (id, data) => {
     return await Product.findByIdAndUpdate(id, data, {
         new: true, // devuelve el documento actualizado

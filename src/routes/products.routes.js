@@ -22,6 +22,7 @@ const {
     updateProduct,
     updateSupplierProduct,
     deleteSupplierProduct,
+    uploadSupplierProductImages,
     deleteProduct,
     uploadImages,
 } = productsController();
@@ -216,6 +217,16 @@ productsRouter.delete(
     authMiddleware,
     roleMiddleware('admin'),
     deleteProduct,
+);
+
+productsRouter.post(
+    '/supplier/:id/images',
+    writeLimiter,
+    validateObjectId,
+    authMiddleware,
+    roleMiddleware('supplier'),
+    upload,
+    uploadSupplierProductImages,
 );
 
 /**

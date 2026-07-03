@@ -10,6 +10,8 @@ import {
     setSupplierFeaturedService,
     setSupplierInternalNotesService,
     updateSupplierProfileService,
+    uploadSupplierImagesService,
+    uploadSupplierLogoService,
 } from '../services/suppliers.js';
 import { HttpError } from '../utils/http-error.js';
 
@@ -68,6 +70,30 @@ export const suppliersController = () => {
             const supplier = await updateSupplierProfileService(
                 req.user.id,
                 req.body,
+            );
+            return res.status(200).json(supplier);
+        } catch (error) {
+            next(error);
+        }
+    };
+
+    const uploadMySupplierLogo = async (req, res, next) => {
+        try {
+            const supplier = await uploadSupplierLogoService(
+                req.user.id,
+                req.files || [],
+            );
+            return res.status(200).json(supplier);
+        } catch (error) {
+            next(error);
+        }
+    };
+
+    const uploadMySupplierImages = async (req, res, next) => {
+        try {
+            const supplier = await uploadSupplierImagesService(
+                req.user.id,
+                req.files || [],
             );
             return res.status(200).json(supplier);
         } catch (error) {
@@ -160,5 +186,7 @@ export const suppliersController = () => {
         setFeatured,
         setInternalNotes,
         updateMySupplier,
+        uploadMySupplierImages,
+        uploadMySupplierLogo,
     };
 };

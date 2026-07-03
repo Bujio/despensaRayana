@@ -5,6 +5,7 @@ import {
     createProductService,
     createSupplierProductService,
     listSupplierProductsService,
+    addSupplierProductImagesService,
     updateSupplierProductService,
     updateProductService,
     deleteSupplierProductService,
@@ -127,6 +128,22 @@ export const productsController = () => {
         }
     };
 
+    const uploadSupplierProductImages = async (req, res, next) => {
+        try {
+            if (!req.files?.length) {
+                throw new HttpError('No images provided', 400);
+            }
+            const product = await addSupplierProductImagesService(
+                req.user.id,
+                req.params.id,
+                req.files,
+            );
+            return res.status(200).json(product);
+        } catch (error) {
+            next(error);
+        }
+    };
+
     const updateProduct = async (req, res, next) => {
         try {
             const product = await updateProductService(req.params.id, req.body);
@@ -188,6 +205,7 @@ export const productsController = () => {
         listSupplierProducts,
         updateSupplierProduct,
         deleteSupplierProduct,
+        uploadSupplierProductImages,
         updateProduct,
         deleteProduct,
         uploadImages,

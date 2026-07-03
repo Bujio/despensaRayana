@@ -16,7 +16,7 @@ const options = {
             title: 'Despensa Rayana API',
             version: '1.0.0',
             description:
-                'API REST para la tienda online Despensa Rayana — gestión de productos, carrito, pedidos y usuarios.',
+                'API REST para la tienda online Despensa Rayana — tienda pública, clientes, proveedores, productos, carrito, pedidos y backoffice.',
         },
         servers: [
             {
@@ -57,7 +57,7 @@ const options = {
                         email: { type: 'string', format: 'email' },
                         role: {
                             type: 'string',
-                            enum: ['user', 'admin'],
+                            enum: ['user', 'supplier', 'admin'],
                         },
                         phone: { type: 'string' },
                         address: { $ref: '#/components/schemas/Address' },
@@ -119,6 +119,73 @@ const options = {
                                     },
                                 },
                             ],
+                        },
+                    },
+                },
+                Supplier: {
+                    type: 'object',
+                    properties: {
+                        _id: { type: 'string' },
+                        userId: { type: 'string' },
+                        supplierCode: {
+                            type: 'string',
+                            minLength: 6,
+                            maxLength: 6,
+                        },
+                        name: { type: 'string' },
+                        slug: { type: 'string' },
+                        legalName: { type: 'string' },
+                        shortDescription: { type: 'string' },
+                        description: { type: 'string' },
+                        story: { type: 'string' },
+                        specialties: {
+                            type: 'array',
+                            items: { type: 'string' },
+                        },
+                        status: {
+                            type: 'string',
+                            enum: [
+                                'pending_review',
+                                'active',
+                                'inactive',
+                                'draft',
+                                'rejected',
+                            ],
+                        },
+                        featured: { type: 'boolean' },
+                        origin: { type: 'string' },
+                        location: { type: 'object' },
+                        contact: { type: 'object' },
+                        business: { type: 'object' },
+                        logo: { type: 'object' },
+                        mainImage: { type: 'object' },
+                        gallery: {
+                            type: 'array',
+                            items: { type: 'object' },
+                        },
+                        certifications: { type: 'object' },
+                        reviewedAt: { type: 'string', format: 'date-time' },
+                        rejectionReason: { type: 'string' },
+                    },
+                },
+                SupplierReport: {
+                    type: 'object',
+                    properties: {
+                        totalRevenueFromOwnProducts: { type: 'number' },
+                        totalUnitsSoldFromOwnProducts: { type: 'number' },
+                        ordersWithOwnProducts: { type: 'number' },
+                        pendingOrdersContainingOwnProducts: { type: 'number' },
+                        bestSellingOwnProducts: {
+                            type: 'array',
+                            items: { type: 'object' },
+                        },
+                        revenueByProduct: {
+                            type: 'array',
+                            items: { type: 'object' },
+                        },
+                        revenueByDate: {
+                            type: 'array',
+                            items: { type: 'object' },
                         },
                     },
                 },
