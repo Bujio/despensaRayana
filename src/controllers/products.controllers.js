@@ -3,6 +3,9 @@ import {
     getProductService,
     listProductsService,
     createProductService,
+    createSupplierProductService,
+    listSupplierProductsService,
+    updateSupplierProductService,
     updateProductService,
     deleteProductService,
     addProductImagesService,
@@ -13,7 +16,9 @@ import { HttpError } from '../utils/http-error.js';
 export const productsController = () => {
     const getProduct = async (req, res, next) => {
         try {
-            const product = await getProductService(req.params.id);
+            const product = await getProductService(req.params.id, {
+                includeAll: req.user?.role === 'admin',
+            });
             if (!product) throw new HttpError('Product not found', 404);
             return res.status(200).json(product);
         } catch (error) {
@@ -58,6 +63,7 @@ export const productsController = () => {
                 maxPrice: parseNumber(maxPrice, 'maxPrice'),
                 sort,
                 order,
+                includeAll: req.adminList === true,
             };
 
             const { data, total } = await listProductsService(
@@ -81,6 +87,40 @@ export const productsController = () => {
         try {
             const product = await createProductService(req.body);
             return res.status(201).json(product);
+        } catch (error) {
+            next(error);
+        }
+    };
+
+    const listSupplierProducts = async (req, res, next) => {
+        try {
+            const products = await listSupplierProductsService(req.user.id);
+            return res.status(200).json({ data: products });
+        } catch (error) {
+            next(error);
+        }
+    };
+
+    const createSupplierProduct = async (req, res, next) => {
+        try {
+            const product = await createSupplierProductService(
+                req.user.id,
+                req.body,
+            );
+            return res.status(201).json(product);
+        } catch (error) {
+            next(error);
+        }
+    };
+
+    const updateSupplierProduct = async (req, res, next) => {
+        try {
+            const product = await updateSupplierProductService(
+                req.user.id,
+                req.params.id,
+                req.body,
+            );
+            return res.status(200).json(product);
         } catch (error) {
             next(error);
         }
@@ -128,6 +168,9 @@ export const productsController = () => {
         getProduct,
         listProducts,
         createProduct,
+        createSupplierProduct,
+        listSupplierProducts,
+        updateSupplierProduct,
         updateProduct,
         deleteProduct,
         uploadImages,

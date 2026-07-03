@@ -7,6 +7,7 @@ import { cartRouter } from './cart.routes.js';
 import { categoriesRouter } from './categories.routes.js';
 import { reviewsRouter } from './reviews.routes.js';
 import { homeContentRouter } from './home-content.routes.js';
+import { suppliersRouter } from './suppliers.routes.js';
 
 export const router = Router();
 
@@ -18,3 +19,4 @@ router.use('/cart', cartRouter);
 router.use('/categories', categoriesRouter);
 router.use('/reviews', reviewsRouter);
 router.use('/home-content', homeContentRouter);
+router.use('/suppliers', suppliersRouter);

@@ -8,14 +8,19 @@ import { validateObjectId } from '../middlewares/objectid.middleware.js';
 import { writeLimiter } from '../middlewares/ratelimit.middleware.js';
 import {
     createProductSchema,
+    createSupplierProductSchema,
     updateProductSchema,
+    updateSupplierProductSchema,
 } from '../schemas/product.schema.js';
 
 const {
     getProduct,
     listProducts,
     createProduct,
+    createSupplierProduct,
+    listSupplierProducts,
     updateProduct,
+    updateSupplierProduct,
     deleteProduct,
     uploadImages,
 } = productsController();
@@ -83,6 +88,22 @@ export const productsRouter = Router();
  *                 pagination: { $ref: '#/components/schemas/Pagination' }
  */
 productsRouter.get('/', listProducts);
+productsRouter.get(
+    '/admin/all',
+    authMiddleware,
+    roleMiddleware('admin'),
+    (req, _res, next) => {
+        req.adminList = true;
+        next();
+    },
+    listProducts,
+);
+productsRouter.get(
+    '/supplier/my',
+    authMiddleware,
+    roleMiddleware('supplier'),
+    listSupplierProducts,
+);
 
 /**
  * @openapi
@@ -126,6 +147,14 @@ productsRouter.post(
     validate(createProductSchema),
     createProduct,
 );
+productsRouter.post(
+    '/supplier',
+    writeLimiter,
+    authMiddleware,
+    roleMiddleware('supplier'),
+    validate(createSupplierProductSchema),
+    createSupplierProduct,
+);
 
 /**
  * @openapi
@@ -153,6 +182,15 @@ productsRouter.post(
  *       200: { description: Eliminado }
  *       404: { description: No encontrado }
  */
+productsRouter.patch(
+    '/supplier/:id',
+    writeLimiter,
+    validateObjectId,
+    authMiddleware,
+    roleMiddleware('supplier'),
+    validate(updateSupplierProductSchema),
+    updateSupplierProduct,
+);
 productsRouter.patch(
     '/:id',
     writeLimiter,

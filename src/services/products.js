@@ -1,5 +1,7 @@
 import fs from 'node:fs/promises';
 import { Product } from '../db/models/product.model.js';
+import { Supplier } from '../db/models/supplier.model.js';
+import { HttpError } from '../utils/http-error.js';
 import {
     cloudinary,
     hasCloudinaryConfig,
@@ -58,8 +60,26 @@ const uploadFileToCloudinary = async (file) => {
  * @param {string} id - ID de MongoDB del producto
  * @returns {Promise<Product|null>} El producto encontrado o null si no existe
  */
-export const getProductService = async (id) => {
-    return await Product.findById(id).populate('category', 'name slug');
+const publicCatalogFilter = () => ({
+    $and: [
+        {
+            $or: [{ status: 'published' }, { status: { $exists: false } }],
+        },
+        {
+            $or: [
+                { supplierRef: { $exists: false } },
+                { supplierRef: null },
+                { 'supplier.status': 'active' },
+                { 'supplier.status': { $exists: false } },
+            ],
+        },
+    ],
+});
+
+export const getProductService = async (id, { includeAll = false } = {}) => {
+    const filter = { _id: id };
+    if (!includeAll) filter.$and = publicCatalogFilter().$and;
+    return await Product.findOne(filter).populate('category', 'name slug');
 };
 
 /**
@@ -87,9 +107,10 @@ export const listProductsService = async (
         maxPrice,
         sort,
         order = 'asc',
+        includeAll = false,
     } = {},
 ) => {
-    const filter = {};
+    const filter = includeAll ? {} : publicCatalogFilter();
     if (categoryId) filter.category = categoryId;
     if (inStock) filter.stock = { $gt: 0 };
 
@@ -137,7 +158,66 @@ export const listProductsService = async (
  * @returns {Promise<Product>} El producto creado
  */
 export const createProductService = async (data) => {
-    return await Product.create(data);
+    return await Product.create({
+        status: data.status || 'published',
+        ...data,
+    });
+};
+
+const getWritableSupplier = async (userId) => {
+    const supplier = await Supplier.findOne({ userId });
+    if (!supplier) throw new HttpError('Supplier profile not found', 404);
+    if (supplier.status === 'rejected') {
+        throw new HttpError('Supplier request was rejected', 403);
+    }
+    if (supplier.status === 'inactive') {
+        throw new HttpError('Supplier account is inactive', 403);
+    }
+    return supplier;
+};
+
+export const listSupplierProductsService = async (userId) => {
+    const supplier = await Supplier.findOne({ userId });
+    if (!supplier) throw new HttpError('Supplier profile not found', 404);
+    return await Product.find({ supplierRef: supplier._id })
+        .populate('category', 'name slug')
+        .sort({ createdAt: -1 });
+};
+
+export const createSupplierProductService = async (userId, data) => {
+    const supplier = await getWritableSupplier(userId);
+    const status = data.status === 'draft' ? 'draft' : 'pending_review';
+    return await Product.create({
+        ...data,
+        status,
+        supplierRef: supplier._id,
+        supplier: {
+            id: 0,
+            supplierCode: supplier.supplierCode,
+            status: supplier.status,
+            name: supplier.name,
+        },
+    });
+};
+
+export const updateSupplierProductService = async (userId, productId, data) => {
+    const supplier = await getWritableSupplier(userId);
+    const product = await Product.findOne({
+        _id: productId,
+        supplierRef: supplier._id,
+    });
+    if (!product) throw new HttpError('Product not found', 404);
+    const nextData = { ...data };
+    if (
+        nextData.status &&
+        !['draft', 'pending_review'].includes(nextData.status)
+    ) {
+        throw new HttpError('Suppliers cannot publish products directly', 403);
+    }
+    return await Product.findByIdAndUpdate(productId, nextData, {
+        new: true,
+        runValidators: true,
+    });
 };
 
 /**

@@ -17,9 +17,21 @@ const imageSchema = z.object({
  */
 const supplierSchema = z.object({
     id: z.number({ error: 'Supplier ID is required' }).int().nonnegative(),
+    supplierCode: z.string().trim().length(6).optional(),
+    status: z
+        .enum(['pending_review', 'active', 'inactive', 'draft', 'rejected'])
+        .optional(),
     name: z.string().trim().max(120).optional(),
     images: z.array(imageSchema).max(20).optional(),
 });
+
+const productStatusSchema = z.enum([
+    'draft',
+    'pending_review',
+    'published',
+    'inactive',
+    'rejected',
+]);
 
 const offerSchema = z
     .object({
@@ -130,6 +142,7 @@ export const createProductSchema = z.object({
         .number({ error: 'Stock is required' })
         .int('Stock must be an integer')
         .min(0, 'Stock cannot be negative'),
+    status: productStatusSchema.optional(),
     offer: offerSchema,
     supplier: supplierSchema,
     images: z.array(imageSchema).max(20).optional(),
@@ -140,3 +153,10 @@ export const createProductSchema = z.object({
  * .partial() hace todos los campos opcionales; solo se validan los que vengan.
  */
 export const updateProductSchema = createProductSchema.partial();
+export const createSupplierProductSchema = createProductSchema
+    .omit({ supplier: true })
+    .extend({
+        status: z.enum(['draft', 'pending_review']).optional(),
+    });
+export const updateSupplierProductSchema =
+    createSupplierProductSchema.partial();

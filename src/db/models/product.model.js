@@ -11,6 +11,14 @@ const ImagesSchema = new mongoose.Schema({
     },
 });
 
+export const PRODUCT_STATUSES = [
+    'draft',
+    'pending_review',
+    'published',
+    'inactive',
+    'rejected',
+];
+
 const OfferSchema = new mongoose.Schema(
     {
         type: {
@@ -81,6 +89,12 @@ const ProductSchema = new mongoose.Schema(
             min: [0, 'Stock cannot be negative'],
             default: 0,
         },
+        status: {
+            type: String,
+            enum: PRODUCT_STATUSES,
+            default: 'published',
+            index: true,
+        },
         offer: {
             type: OfferSchema,
             default: () => ({ type: 'none', active: false }),
@@ -91,10 +105,27 @@ const ProductSchema = new mongoose.Schema(
             type: Schema.Types.ObjectId,
             ref: 'Category',
         },
+        supplierRef: {
+            type: Schema.Types.ObjectId,
+            ref: 'Supplier',
+            index: true,
+        },
         supplier: {
             id: {
                 type: Number,
                 required: true,
+            },
+            supplierCode: String,
+            status: {
+                type: String,
+                enum: [
+                    'pending_review',
+                    'active',
+                    'inactive',
+                    'draft',
+                    'rejected',
+                ],
+                default: 'active',
             },
             name: String,
             images: [ImagesSchema],
@@ -108,6 +139,7 @@ const ProductSchema = new mongoose.Schema(
 
 // Índice sobre category para acelerar el filtrado del catálogo por categoría.
 ProductSchema.index({ category: 1 });
+ProductSchema.index({ status: 1, 'supplier.status': 1 });
 // Índice de texto para búsqueda full-text sobre nombre y descripciones.
 ProductSchema.index({
     name: 'text',

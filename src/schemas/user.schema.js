@@ -84,4 +84,4 @@ export const resendVerificationSchema = z.object({
  */
 export const updateUserSchema = registerSchema
     .partial()
-    .extend({ role: z.enum(['user', 'admin']).optional() });
+    .extend({ role: z.enum(['user', 'admin', 'supplier']).optional() });

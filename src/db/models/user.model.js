@@ -35,7 +35,11 @@ const userSchema = new Schema(
                 type: String,
             },
         },
-        role: { type: String, enum: ['user', 'admin'], default: 'user' },
+        role: {
+            type: String,
+            enum: ['user', 'admin', 'supplier'],
+            default: 'user',
+        },
         // Verificación de email: hasta que el usuario confirme el enlace
         // recibido, emailVerified es false y algunas acciones pueden restringirse.
         emailVerified: { type: Boolean, default: false },
