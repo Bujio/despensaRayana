@@ -227,6 +227,17 @@ export const updateSupplierProductService = async (userId, productId, data) => {
  * @param {object} data - Campos a actualizar (parcial)
  * @returns {Promise<Product|null>} El producto actualizado o null si no existe
  */
+export const deleteSupplierProductService = async (userId, productId) => {
+    const supplier = await getWritableSupplier(userId);
+    const product = await Product.findOne({
+        _id: productId,
+        supplierRef: supplier._id,
+    });
+    if (!product) return null;
+    await product.softDelete();
+    return product;
+};
+
 export const updateProductService = async (id, data) => {
     return await Product.findByIdAndUpdate(id, data, {
         new: true, // devuelve el documento actualizado

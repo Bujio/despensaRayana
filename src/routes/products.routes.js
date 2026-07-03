@@ -21,6 +21,7 @@ const {
     listSupplierProducts,
     updateProduct,
     updateSupplierProduct,
+    deleteSupplierProduct,
     deleteProduct,
     uploadImages,
 } = productsController();
@@ -199,6 +200,14 @@ productsRouter.patch(
     roleMiddleware('admin'),
     validate(updateProductSchema),
     updateProduct,
+);
+productsRouter.delete(
+    '/supplier/:id',
+    writeLimiter,
+    validateObjectId,
+    authMiddleware,
+    roleMiddleware('supplier'),
+    deleteSupplierProduct,
 );
 productsRouter.delete(
     '/:id',

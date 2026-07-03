@@ -7,6 +7,7 @@ import {
     listSupplierProductsService,
     updateSupplierProductService,
     updateProductService,
+    deleteSupplierProductService,
     deleteProductService,
     addProductImagesService,
 } from '../services/products.js';
@@ -136,6 +137,21 @@ export const productsController = () => {
         }
     };
 
+    const deleteSupplierProduct = async (req, res, next) => {
+        try {
+            const product = await deleteSupplierProductService(
+                req.user.id,
+                req.params.id,
+            );
+            if (!product) throw new HttpError('Product not found', 404);
+            return res
+                .status(200)
+                .json({ message: 'Product deleted successfully' });
+        } catch (error) {
+            next(error);
+        }
+    };
+
     const deleteProduct = async (req, res, next) => {
         try {
             const product = await deleteProductService(req.params.id);
@@ -171,6 +187,7 @@ export const productsController = () => {
         createSupplierProduct,
         listSupplierProducts,
         updateSupplierProduct,
+        deleteSupplierProduct,
         updateProduct,
         deleteProduct,
         uploadImages,
