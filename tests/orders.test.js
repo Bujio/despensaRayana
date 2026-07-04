@@ -147,4 +147,32 @@ describe('POST /api/orders', () => {
         const after = await Cart.findOne({});
         expect(after.items).toHaveLength(0);
     });
+
+    test('allows the owner to cancel a pending order and restores stock', async () => {
+        await seedProduct({ stock: 5 });
+        const { accessToken, email } = await registerAndLogin();
+
+        const created = await request(app)
+            .post('/api/orders')
+            .set('Authorization', `Bearer ${accessToken}`)
+            .send({
+                email,
+                products: [{ sku: 'SKU-TEST', count: 2, price: 10 }],
+            });
+
+        const afterCreate = await Product.findOne({ sku: 'SKU-TEST' });
+        expect(afterCreate.stock).toBe(3);
+
+        const cancelled = await request(app)
+            .patch(`/api/orders/${created.body._id}/cancel`)
+            .set('Authorization', `Bearer ${accessToken}`)
+            .send({ reason: 'Cambio de planes' });
+
+        const afterCancel = await Product.findOne({ sku: 'SKU-TEST' });
+        expect(cancelled.status).toBe(200);
+        expect(cancelled.body.status).toBe('cancelled');
+        expect(cancelled.body.cancellation.amount).toBe(20);
+        expect(cancelled.body.refund.amount).toBe(20);
+        expect(afterCancel.stock).toBe(5);
+    });
 });

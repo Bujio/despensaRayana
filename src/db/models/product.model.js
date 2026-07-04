@@ -95,6 +95,17 @@ const ProductSchema = new mongoose.Schema(
             default: 'published',
             index: true,
         },
+        rejectionReason: {
+            type: String,
+            trim: true,
+        },
+        reviewedAt: {
+            type: Date,
+        },
+        reviewedBy: {
+            type: Schema.Types.ObjectId,
+            ref: 'User',
+        },
         offer: {
             type: OfferSchema,
             default: () => ({ type: 'none', active: false }),

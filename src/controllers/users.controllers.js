@@ -59,6 +59,7 @@ export const usersController = () => {
 
     const deleteUser = async (req, res, next) => {
         try {
+            assertOwnerOrAdmin(req, req.user.id === req.params.id);
             const user = await deleteUserService(req.params.id);
             if (!user) throw new HttpError('User not found', 404);
             return res

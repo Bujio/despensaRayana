@@ -5,18 +5,24 @@ import {
     createOrderService,
     updateOrderService,
     updateOrderStatusService,
+    cancelOrderService,
     deleteOrderService,
 } from '../services/orders.js';
 import { Cart } from '../db/models/cart.model.js';
+import { User } from '../db/models/user.model.js';
 import { getPagination, buildPaginationMeta } from '../utils/pagination.js';
 import { assertOwnerOrAdmin } from '../utils/authz.js';
 import { HttpError } from '../utils/http-error.js';
 import { logger } from '../utils/logger.js';
 
-const normalizeEmail = (email) => String(email || '').toLowerCase().trim();
+const normalizeEmail = (email) =>
+    String(email || '')
+        .toLowerCase()
+        .trim();
 
 const isOrderOwner = (req, order) => {
-    const orderUserId = order.userId?.toString?.() || String(order.userId || '');
+    const orderUserId =
+        order.userId?.toString?.() || String(order.userId || '');
     if (orderUserId) return orderUserId === String(req.user.id);
 
     // Fallback para pedidos antiguos creados antes de guardar userId.
@@ -57,7 +63,15 @@ export const ordersController = () => {
             // Normalizamos a minúsculas porque los emails se guardan lowercase
             const targetEmail = normalizeEmail(req.params.email);
             const currentEmail = normalizeEmail(req.user.email);
-            assertOwnerOrAdmin(req, currentEmail === targetEmail);
+            let ownsTargetEmail = currentEmail === targetEmail;
+            if (!ownsTargetEmail && req.user.role !== 'admin') {
+                const currentUser = await User.findById(req.user.id).select(
+                    'email',
+                );
+                ownsTargetEmail =
+                    normalizeEmail(currentUser?.email) === targetEmail;
+            }
+            assertOwnerOrAdmin(req, ownsTargetEmail);
             const pagination = getPagination(req.query);
             const { data, total } = await listOrdersByEmailService(
                 targetEmail,
@@ -92,7 +106,8 @@ export const ordersController = () => {
 
             const orderData = {
                 ...req.body,
-                email: req.user.role === 'admin' ? requestedEmail : currentEmail,
+                email:
+                    req.user.role === 'admin' ? requestedEmail : currentEmail,
                 userId:
                     req.user.role === 'admin' && requestedEmail !== currentEmail
                         ? undefined
@@ -126,7 +141,11 @@ export const ordersController = () => {
             // Excluimos 'products' del body: cambiar las líneas de un pedido
             // existente requeriría reajustar el stock, lo que no hace este endpoint.
             // Para eso se debe borrar y recrear el pedido.
-            const { products: _ignored, userId: _userId, ...safeData } = req.body;
+            const {
+                products: _ignored,
+                userId: _userId,
+                ...safeData
+            } = req.body;
             const updated = await updateOrderService(req.params.id, safeData);
             return res.status(200).json(updated);
         } catch (error) {
@@ -141,6 +160,23 @@ export const ordersController = () => {
                 req.body.status,
             );
             return res.status(200).json(order);
+        } catch (error) {
+            next(error);
+        }
+    };
+
+    const cancelOrder = async (req, res, next) => {
+        try {
+            const order = await getOrderService(req.params.id);
+            if (!order) throw new HttpError('Order not found', 404);
+            assertOwnerOrAdmin(req, isOrderOwner(req, order));
+            const updated = await cancelOrderService(req.params.id, {
+                cancelledBy: req.user.id,
+                reason: req.body?.reason || '',
+                source: req.user.role === 'admin' ? 'admin' : 'client',
+                allowProcessing: req.user.role === 'admin',
+            });
+            return res.status(200).json(updated);
         } catch (error) {
             next(error);
         }
@@ -165,6 +201,7 @@ export const ordersController = () => {
         createOrder,
         updateOrder,
         updateOrderStatus,
+        cancelOrder,
         deleteOrder,
     };
 };

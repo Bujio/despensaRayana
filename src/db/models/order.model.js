@@ -35,6 +35,34 @@ const ShippingAddressSchema = new Schema(
     { _id: false },
 );
 
+const CancellationSchema = new Schema(
+    {
+        cancelledAt: { type: Date },
+        cancelledBy: { type: Schema.Types.ObjectId, ref: 'User' },
+        reason: { type: String, trim: true },
+        source: {
+            type: String,
+            enum: ['client', 'admin', 'system'],
+            default: 'client',
+        },
+        amount: { type: Number, default: 0 },
+    },
+    { _id: false },
+);
+
+const RefundSchema = new Schema(
+    {
+        amount: { type: Number, default: 0 },
+        status: {
+            type: String,
+            enum: ['pending', 'completed', 'failed', 'not_required'],
+            default: 'pending',
+        },
+        processedAt: { type: Date },
+    },
+    { _id: false },
+);
+
 // Estados posibles de un pedido y las transiciones permitidas entre ellos:
 //
 //   pending → processing → shipped → delivered
@@ -93,6 +121,8 @@ const OrderSchema = new Schema(
         total: {
             type: Number,
         },
+        cancellation: CancellationSchema,
+        refund: RefundSchema,
     },
     { timestamps: true },
 );

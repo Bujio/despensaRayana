@@ -20,6 +20,8 @@ const {
     createSupplierProduct,
     listSupplierProducts,
     updateProduct,
+    approveProduct,
+    rejectProduct,
     updateSupplierProduct,
     deleteSupplierProduct,
     uploadSupplierProductImages,
@@ -192,6 +194,22 @@ productsRouter.patch(
     roleMiddleware('supplier'),
     validate(updateSupplierProductSchema),
     updateSupplierProduct,
+);
+productsRouter.patch(
+    '/:id/approve',
+    writeLimiter,
+    validateObjectId,
+    authMiddleware,
+    roleMiddleware('admin'),
+    approveProduct,
+);
+productsRouter.patch(
+    '/:id/reject',
+    writeLimiter,
+    validateObjectId,
+    authMiddleware,
+    roleMiddleware('admin'),
+    rejectProduct,
 );
 productsRouter.patch(
     '/:id',

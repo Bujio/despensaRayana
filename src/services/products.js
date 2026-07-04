@@ -1,4 +1,6 @@
 import fs from 'node:fs/promises';
+import crypto from 'node:crypto';
+import { Category } from '../db/models/category.model.js';
 import { Product } from '../db/models/product.model.js';
 import { Supplier } from '../db/models/supplier.model.js';
 import { HttpError } from '../utils/http-error.js';
@@ -12,6 +14,7 @@ import {
  * Whitelist para evitar que el cliente ordene por campos internos/sensibles.
  */
 const SORTABLE_FIELDS = new Set(['name', 'price', 'stock', 'createdAt']);
+const SKU_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 
 const getApiBaseUrl = () => {
     const configured = process.env.PUBLIC_API_URL || process.env.API_BASE_URL;
@@ -31,6 +34,56 @@ const mapLocalImage = (file) => ({
     url: getImageUrl(file),
     name: file.originalname || file.filename || 'Imagen del producto',
 });
+
+const normalizeSkuPart = (value = '', fallback = 'GEN', maxLength = 6) => {
+    const normalized = String(value || '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toUpperCase()
+        .replace(/[^A-Z0-9]+/g, '')
+        .slice(0, maxLength);
+    return normalized || fallback.slice(0, maxLength);
+};
+
+const createSkuSuffix = (length = 4) => {
+    let value = '';
+    for (let index = 0; index < length; index += 1) {
+        value += SKU_CHARS[crypto.randomInt(0, SKU_CHARS.length)];
+    }
+    return value;
+};
+
+const getCategorySkuPart = async (categoryId) => {
+    if (!categoryId) return 'CAT';
+    const category = await Category.findById(categoryId).select('name slug');
+    return normalizeSkuPart(category?.slug || category?.name, 'CAT', 4);
+};
+
+const buildSkuCandidate = async (data, supplier = {}) => {
+    const categoryPart = await getCategorySkuPart(data.category);
+    const supplierPart = normalizeSkuPart(
+        supplier.supplierCode ||
+            data.supplier?.supplierCode ||
+            supplier.name ||
+            data.supplier?.name,
+        'RAYA',
+        6,
+    );
+    const productPart = normalizeSkuPart(data.name, 'PROD', 6);
+    return `LDR-${categoryPart}-${supplierPart}-${productPart}-${createSkuSuffix()}`;
+};
+
+const createUniqueProductSku = async (data, supplier = {}) => {
+    if (data.sku?.trim()) return data.sku.trim().toUpperCase();
+
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+        const sku = await buildSkuCandidate(data, supplier);
+        const exists = await Product.exists({ sku });
+        if (!exists) return sku;
+    }
+
+    throw new HttpError('Could not generate product SKU', 500);
+};
 
 const uploadFileToCloudinary = async (file) => {
     const result = await cloudinary.uploader.upload(file.path, {
@@ -139,6 +192,7 @@ export const listProductsService = async (
 
     const query = Product.find(filter, projection)
         .populate('category', 'name slug')
+        .populate('supplierRef', 'name supplierCode status')
         .sort(sortObj)
         .skip(skip)
         .limit(limit);
@@ -158,9 +212,11 @@ export const listProductsService = async (
  * @returns {Promise<Product>} El producto creado
  */
 export const createProductService = async (data) => {
+    const sku = await createUniqueProductSku(data, data.supplier || {});
     return await Product.create({
         status: data.status || 'published',
         ...data,
+        sku,
     });
 };
 
@@ -187,8 +243,10 @@ export const listSupplierProductsService = async (userId) => {
 export const createSupplierProductService = async (userId, data) => {
     const supplier = await getWritableSupplier(userId);
     const status = data.status === 'draft' ? 'draft' : 'pending_review';
+    const sku = await createUniqueProductSku(data, supplier);
     return await Product.create({
         ...data,
+        sku,
         status,
         supplierRef: supplier._id,
         supplier: {
@@ -213,6 +271,11 @@ export const updateSupplierProductService = async (userId, productId, data) => {
         !['draft', 'pending_review'].includes(nextData.status)
     ) {
         throw new HttpError('Suppliers cannot publish products directly', 403);
+    }
+    if (nextData.status === 'pending_review') {
+        nextData.rejectionReason = '';
+        nextData.reviewedAt = null;
+        nextData.reviewedBy = null;
     }
     return await Product.findByIdAndUpdate(productId, nextData, {
         new: true,
@@ -274,6 +337,59 @@ export const updateProductService = async (id, data) => {
         new: true, // devuelve el documento actualizado
         runValidators: true, // aplica las validaciones del schema de Mongoose
     });
+};
+
+export const approveProductService = async (id, adminId = null) => {
+    const product = await Product.findById(id).populate(
+        'supplierRef',
+        'status',
+    );
+    if (!product) return null;
+
+    if (!product.category) {
+        throw new HttpError(
+            'Product category is required before approval',
+            400,
+        );
+    }
+    if (!product.shortDescription?.trim()) {
+        throw new HttpError(
+            'Product short description is required before approval',
+            400,
+        );
+    }
+    if (!Number.isFinite(Number(product.price)) || Number(product.price) <= 0) {
+        throw new HttpError('Product price is required before approval', 400);
+    }
+    if (product.supplierRef && product.supplierRef.status !== 'active') {
+        throw new HttpError(
+            'Supplier must be active before publishing products',
+            400,
+        );
+    }
+
+    product.status = 'published';
+    product.rejectionReason = '';
+    product.reviewedAt = new Date();
+    product.reviewedBy = adminId;
+    if (product.supplier?.status) product.supplier.status = 'active';
+    return await product.save();
+};
+
+export const rejectProductService = async (id, reason = '', adminId = null) => {
+    const product = await Product.findById(id);
+    if (!product) return null;
+
+    const rejectionReason = String(reason || '').trim();
+    if (rejectionReason.length < 3) {
+        throw new HttpError('Rejection reason is required', 400);
+    }
+
+    product.status = 'rejected';
+    product.rejectionReason = rejectionReason.slice(0, 1000);
+    product.reviewedAt = new Date();
+    product.reviewedBy = adminId;
+    return await product.save();
 };
 
 /**

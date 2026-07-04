@@ -54,6 +54,8 @@ const getOwnOrderLines = async (userId) => {
                     orderId: order._id,
                     date: order.date || order.createdAt,
                     status: order.status,
+                    cancellation: order.cancellation,
+                    refund: order.refund,
                     lines,
                     ownRevenue: lines.reduce(
                         (total, line) => total + line.revenue,
@@ -76,9 +78,13 @@ export const getSupplierOrdersService = async (userId) => {
 
 export const getSupplierSalesReportService = async (userId) => {
     const { orders } = await getOwnOrderLines(userId);
+    const activeOrders = orders.filter((order) => order.status !== 'cancelled');
+    const cancelledOrders = orders.filter(
+        (order) => order.status === 'cancelled',
+    );
     const revenueByDate = new Map();
 
-    for (const order of orders) {
+    for (const order of activeOrders) {
         const key = new Date(order.date || Date.now())
             .toISOString()
             .slice(0, 10);
@@ -89,16 +95,26 @@ export const getSupplierSalesReportService = async (userId) => {
     }
 
     return {
-        totalRevenueFromOwnProducts: orders.reduce(
+        totalRevenueFromOwnProducts: activeOrders.reduce(
             (total, order) => total + order.ownRevenue,
             0,
         ),
-        totalUnitsSoldFromOwnProducts: orders.reduce(
+        totalUnitsSoldFromOwnProducts: activeOrders.reduce(
             (total, order) => total + order.ownUnits,
             0,
         ),
-        ordersWithOwnProducts: orders.length,
-        pendingOrdersContainingOwnProducts: orders.filter(
+        ordersWithOwnProducts: activeOrders.length,
+        cancelledOrdersWithOwnProducts: cancelledOrders.length,
+        cancellationsAmountFromOwnProducts: cancelledOrders.reduce(
+            (total, order) => total + order.ownRevenue,
+            0,
+        ),
+        refundsAmountFromOwnProducts: cancelledOrders.reduce(
+            (total, order) =>
+                total + Number(order.refund?.amount || order.ownRevenue || 0),
+            0,
+        ),
+        pendingOrdersContainingOwnProducts: activeOrders.filter(
             (order) =>
                 order.status === 'pending' || order.status === 'processing',
         ).length,
@@ -111,6 +127,10 @@ export const getSupplierSalesReportService = async (userId) => {
 
 export const getSupplierProductsReportService = async (userId) => {
     const { products, orders } = await getOwnOrderLines(userId);
+    const activeOrders = orders.filter((order) => order.status !== 'cancelled');
+    const cancelledOrders = orders.filter(
+        (order) => order.status === 'cancelled',
+    );
     const statsBySku = new Map();
 
     for (const product of products) {
@@ -120,17 +140,30 @@ export const getSupplierProductsReportService = async (userId) => {
             productName: product.name,
             revenue: 0,
             units: 0,
+            cancellations: 0,
+            cancellationAmount: 0,
+            refundAmount: 0,
             stock: product.stock || 0,
             status: product.status,
         });
     }
 
-    for (const order of orders) {
+    for (const order of activeOrders) {
         for (const line of order.lines) {
             const current = statsBySku.get(line.sku);
             if (!current) continue;
             current.revenue += line.revenue;
             current.units += line.units;
+        }
+    }
+
+    for (const order of cancelledOrders) {
+        for (const line of order.lines) {
+            const current = statsBySku.get(line.sku);
+            if (!current) continue;
+            current.cancellations += line.units;
+            current.cancellationAmount += line.revenue;
+            current.refundAmount += line.revenue;
         }
     }
 

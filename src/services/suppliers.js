@@ -174,22 +174,40 @@ export const listSuppliersService = async ({ status, search } = {}) => {
     const suppliers = await Supplier.find(filter)
         .sort({ createdAt: -1 })
         .populate('userId', 'name email role');
-    const productCounts = await Product.aggregate([
-        {
-            $match: {
-                deletedAt: null,
-                supplierRef: { $in: suppliers.map((supplier) => supplier._id) },
+    const supplierIds = suppliers.map((supplier) => supplier._id);
+    const [productCounts, pendingProductCounts] = await Promise.all([
+        Product.aggregate([
+            {
+                $match: {
+                    deletedAt: null,
+                    supplierRef: { $in: supplierIds },
+                },
             },
-        },
-        { $group: { _id: '$supplierRef', total: { $sum: 1 } } },
+            { $group: { _id: '$supplierRef', total: { $sum: 1 } } },
+        ]),
+        Product.aggregate([
+            {
+                $match: {
+                    deletedAt: null,
+                    status: 'pending_review',
+                    supplierRef: { $in: supplierIds },
+                },
+            },
+            { $group: { _id: '$supplierRef', total: { $sum: 1 } } },
+        ]),
     ]);
     const countsBySupplier = new Map(
         productCounts.map((item) => [String(item._id), item.total]),
+    );
+    const pendingCountsBySupplier = new Map(
+        pendingProductCounts.map((item) => [String(item._id), item.total]),
     );
 
     return suppliers.map((supplier) => ({
         ...supplier.toObject(),
         productCount: countsBySupplier.get(String(supplier._id)) || 0,
+        pendingProductCount:
+            pendingCountsBySupplier.get(String(supplier._id)) || 0,
     }));
 };
 
@@ -202,7 +220,14 @@ export const getSupplierByIdService = async (id) => {
     const products = await Product.find({ supplierRef: supplier._id })
         .populate('category', 'name slug')
         .sort({ createdAt: -1 });
-    return { ...supplier.toObject(), products };
+    return {
+        ...supplier.toObject(),
+        products,
+        productCount: products.length,
+        pendingProductCount: products.filter(
+            (product) => product.status === 'pending_review',
+        ).length,
+    };
 };
 
 export const getSupplierForUserService = async (userId) => {
@@ -232,6 +257,20 @@ export const uploadSupplierLogoService = async (userId, files = []) => {
     const supplier = await Supplier.findOneAndUpdate(
         { userId },
         { logo },
+        { new: true, runValidators: true },
+    );
+    if (!supplier) throw new HttpError('Supplier profile not found', 404);
+    return supplier;
+};
+
+export const uploadSupplierMainImageService = async (userId, files = []) => {
+    const file = files[0];
+    if (!file) throw new HttpError('No image provided', 400);
+
+    const mainImage = await mapSupplierUpload(file);
+    const supplier = await Supplier.findOneAndUpdate(
+        { userId },
+        { mainImage },
         { new: true, runValidators: true },
     );
     if (!supplier) throw new HttpError('Supplier profile not found', 404);
@@ -286,6 +325,33 @@ export const rejectSupplierService = async (id, adminId, reason = '') => {
         { $set: { 'supplier.status': 'rejected' } },
     );
     return supplier;
+};
+
+export const deleteSupplierService = async (id) => {
+    const supplier = await Supplier.findById(id);
+    if (!supplier) throw new HttpError('Supplier not found', 404);
+
+    await Product.updateMany(
+        { supplierRef: supplier._id },
+        {
+            $set: {
+                status: 'inactive',
+                'supplier.status': 'inactive',
+            },
+            $unset: {
+                supplierRef: '',
+            },
+        },
+    );
+    if (supplier.userId) {
+        await User.findByIdAndDelete(supplier.userId).catch(() => {});
+    }
+    await Supplier.findByIdAndDelete(supplier._id);
+
+    return {
+        supplierId: String(supplier._id),
+        userId: supplier.userId ? String(supplier.userId) : '',
+    };
 };
 
 export const deactivateSupplierService = async (id, adminId) => {

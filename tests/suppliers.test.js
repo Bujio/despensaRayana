@@ -138,6 +138,7 @@ describe('Supplier products ownership', () => {
                 name: 'Torta del Casar',
                 sku: 'SUP-QSO-001',
                 price: 12.5,
+                shortDescription: 'Queso artesanal de la Raya',
                 stock: 8,
                 category: String(category._id),
                 status: 'pending_review',
@@ -150,7 +151,9 @@ describe('Supplier products ownership', () => {
                 name: 'Miel de brezo',
                 sku: 'SUP-MIE-001',
                 price: 8.4,
+                shortDescription: 'Miel artesana de brezo',
                 stock: 5,
+                category: String(category._id),
                 status: 'draft',
             });
 
@@ -172,6 +175,7 @@ describe('Supplier products ownership', () => {
             'second@test.com',
             'Proveedor Dos',
         );
+        const category = await Category.create({ name: 'Aceites' });
         const product = await request(app)
             .post('/api/products/supplier')
             .set('Authorization', `Bearer ${first.token}`)
@@ -179,7 +183,9 @@ describe('Supplier products ownership', () => {
                 name: 'Aceite propio',
                 sku: 'SUP-ACE-001',
                 price: 18,
+                shortDescription: 'Aceite de oliva propio',
                 stock: 4,
+                category: String(category._id),
                 status: 'draft',
             });
 
@@ -233,9 +239,89 @@ describe('Admin supplier review and supplier reports', () => {
         expect(reject.body.status).toBe('rejected');
     });
 
+    test('admin can approve a pending supplier product', async () => {
+        const adminToken = await createAdminToken();
+        const supplier = await registerSupplier();
+        const category = await Category.create({ name: 'Pendientes' });
+
+        await request(app)
+            .patch(`/api/suppliers/${supplier.supplier._id}/approve`)
+            .set('Authorization', `Bearer ${adminToken}`);
+
+        const product = await request(app)
+            .post('/api/products/supplier')
+            .set('Authorization', `Bearer ${supplier.token}`)
+            .send({
+                name: 'Queso pendiente',
+                price: 12,
+                shortDescription: 'Queso artesano pendiente de revisión',
+                stock: 4,
+                category: String(category._id),
+                status: 'pending_review',
+            });
+
+        const approve = await request(app)
+            .patch(`/api/products/${product.body._id}/approve`)
+            .set('Authorization', `Bearer ${adminToken}`);
+
+        expect(product.status).toBe(201);
+        expect(product.body.status).toBe('pending_review');
+        expect(approve.status).toBe(200);
+        expect(approve.body.status).toBe('published');
+    });
+
+    test('admin can reject a pending product with a reason and supplier can resubmit it', async () => {
+        const adminToken = await createAdminToken();
+        const supplier = await registerSupplier();
+        const category = await Category.create({ name: 'Revisión' });
+
+        await request(app)
+            .patch(`/api/suppliers/${supplier.supplier._id}/approve`)
+            .set('Authorization', `Bearer ${adminToken}`);
+
+        const product = await request(app)
+            .post('/api/products/supplier')
+            .set('Authorization', `Bearer ${supplier.token}`)
+            .send({
+                name: 'Miel para revisar',
+                price: 9,
+                shortDescription: 'Miel pendiente de revisión',
+                stock: 6,
+                category: String(category._id),
+                status: 'pending_review',
+            });
+
+        const reject = await request(app)
+            .patch(`/api/products/${product.body._id}/reject`)
+            .set('Authorization', `Bearer ${adminToken}`)
+            .send({ reason: 'Falta una imagen real del producto' });
+
+        const resubmit = await request(app)
+            .patch(`/api/products/supplier/${product.body._id}`)
+            .set('Authorization', `Bearer ${supplier.token}`)
+            .send({
+                name: 'Miel para revisar',
+                price: 9,
+                shortDescription: 'Miel corregida con imagen real',
+                stock: 6,
+                category: String(category._id),
+                status: 'pending_review',
+            });
+
+        expect(reject.status).toBe(200);
+        expect(reject.body.status).toBe('rejected');
+        expect(reject.body.rejectionReason).toBe(
+            'Falta una imagen real del producto',
+        );
+        expect(resubmit.status).toBe(200);
+        expect(resubmit.body.status).toBe('pending_review');
+        expect(resubmit.body.rejectionReason).toBe('');
+    });
+
     test('inactive or rejected supplier cannot create products', async () => {
         const adminToken = await createAdminToken();
         const supplier = await registerSupplier();
+        const category = await Category.create({ name: 'Bloqueados' });
         await request(app)
             .patch(`/api/suppliers/${supplier.supplier._id}/deactivate`)
             .set('Authorization', `Bearer ${adminToken}`);
@@ -247,7 +333,9 @@ describe('Admin supplier review and supplier reports', () => {
                 name: 'Producto bloqueado',
                 sku: 'SUP-BLO-001',
                 price: 5,
+                shortDescription: 'Producto pendiente bloqueado',
                 stock: 1,
+                category: String(category._id),
             });
 
         expect(create.status).toBe(403);
@@ -259,6 +347,7 @@ describe('Admin supplier review and supplier reports', () => {
             'second@test.com',
             'Proveedor Dos',
         );
+        const category = await Category.create({ name: 'Reportes' });
 
         const ownProduct = await request(app)
             .post('/api/products/supplier')
@@ -267,7 +356,9 @@ describe('Admin supplier review and supplier reports', () => {
                 name: 'Queso propio',
                 sku: 'SUP-QSO-002',
                 price: 10,
+                shortDescription: 'Queso propio para informes',
                 stock: 10,
+                category: String(category._id),
                 status: 'draft',
             });
         await request(app)
@@ -277,7 +368,9 @@ describe('Admin supplier review and supplier reports', () => {
                 name: 'Miel ajena',
                 sku: 'SUP-MIE-002',
                 price: 6,
+                shortDescription: 'Miel ajena para informes',
                 stock: 10,
+                category: String(category._id),
                 status: 'draft',
             });
 

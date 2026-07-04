@@ -18,6 +18,7 @@ const {
     createOrder,
     updateOrder,
     updateOrderStatus,
+    cancelOrder,
     deleteOrder,
 } = ordersController();
 
@@ -147,6 +148,12 @@ ordersRouter.patch(
     authMiddleware,
     validate(updateOrderSchema),
     updateOrder,
+);
+ordersRouter.patch(
+    '/:id/cancel',
+    validateObjectId,
+    authMiddleware,
+    cancelOrder,
 );
 // Solo el admin puede cambiar el estado de un pedido
 ordersRouter.patch(

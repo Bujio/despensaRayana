@@ -53,6 +53,27 @@ const decrementStockAtomic = async (products, session = null) => {
     }
 };
 
+const restoreStock = async (products, session = null) => {
+    await Promise.all(
+        products.map(({ sku, count = 1 }) =>
+            Product.updateOne(
+                { sku },
+                { $inc: { stock: count } },
+                session ? { session } : undefined,
+            ),
+        ),
+    );
+};
+
+const calculateOrderTotal = (order) => {
+    const lineTotal = order.products.reduce(
+        (total, item) =>
+            total + Number(item.total || item.price * (item.count || 1) || 0),
+        0,
+    );
+    return Number(order.total ?? lineTotal ?? 0);
+};
+
 /**
  * Comprueba si el cluster de MongoDB soporta transacciones.
  * Las transacciones requieren un replica set o un sharded cluster:
@@ -188,6 +209,83 @@ export const createOrderService = async (data) => {
     return order;
 };
 
+const cancelOrder = async (
+    id,
+    {
+        cancelledBy = null,
+        reason = '',
+        source = 'client',
+        allowProcessing = false,
+    } = {},
+) => {
+    const order = await Order.findById(id);
+    if (!order) {
+        throw new HttpError('Order not found', 404);
+    }
+
+    const cancellableStatuses = allowProcessing
+        ? ['pending', 'processing']
+        : ['pending'];
+    if (!cancellableStatuses.includes(order.status)) {
+        throw new HttpError(
+            'Only pending orders can be cancelled by the client',
+            400,
+        );
+    }
+
+    const amount = calculateOrderTotal(order);
+
+    if (supportsTransactions()) {
+        const session = await mongoose.startSession();
+        try {
+            let updated;
+            await session.withTransaction(async () => {
+                await restoreStock(order.products, session);
+                order.status = 'cancelled';
+                order.cancellation = {
+                    cancelledAt: new Date(),
+                    cancelledBy,
+                    reason,
+                    source,
+                    amount,
+                };
+                order.refund = {
+                    amount,
+                    status: amount > 0 ? 'pending' : 'not_required',
+                };
+                updated = await order.save({ session });
+            });
+            sendOrderStatusEmail(updated).catch((err) =>
+                logger.error('Failed to send order status email:', err.message),
+            );
+            return updated;
+        } finally {
+            await session.endSession();
+        }
+    }
+
+    await restoreStock(order.products);
+    order.status = 'cancelled';
+    order.cancellation = {
+        cancelledAt: new Date(),
+        cancelledBy,
+        reason,
+        source,
+        amount,
+    };
+    order.refund = {
+        amount,
+        status: amount > 0 ? 'pending' : 'not_required',
+    };
+    const updated = await order.save();
+
+    sendOrderStatusEmail(updated).catch((err) =>
+        logger.error('Failed to send order status email:', err.message),
+    );
+
+    return updated;
+};
+
 /**
  * Actualiza un pedido existente.
  * No ajusta stock — para cambios de cantidades se debe borrar y recrear el pedido.
@@ -223,6 +321,13 @@ export const updateOrderStatusService = async (id, newStatus) => {
         throw new HttpError('Order not found', 404);
     }
 
+    if (newStatus === 'cancelled') {
+        return await cancelOrder(id, {
+            source: 'admin',
+            allowProcessing: true,
+        });
+    }
+
     const allowed = VALID_TRANSITIONS[order.status];
 
     // Si el array de transiciones permitidas no incluye el nuevo estado, lo rechazamos
@@ -242,6 +347,10 @@ export const updateOrderStatusService = async (id, newStatus) => {
     );
 
     return updated;
+};
+
+export const cancelOrderService = async (id, options = {}) => {
+    return await cancelOrder(id, options);
 };
 
 /**
@@ -264,11 +373,7 @@ export const deleteOrderService = async (id) => {
     await Order.findByIdAndDelete(id);
 
     // Paso 3: reponemos el stock de cada producto
-    await Promise.all(
-        order.products.map(({ sku, count = 1 }) =>
-            Product.updateOne({ sku }, { $inc: { stock: count } }),
-        ),
-    );
+    await restoreStock(order.products);
 
     return order;
 };

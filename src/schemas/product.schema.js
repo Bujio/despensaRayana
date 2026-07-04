@@ -33,6 +33,18 @@ const productStatusSchema = z.enum([
     'rejected',
 ]);
 
+const skuSchema = z.preprocess(
+    (value) =>
+        typeof value === 'string' && value.trim() === '' ? undefined : value,
+    z
+        .string()
+        .trim()
+        .min(2, 'SKU must be at least 2 characters')
+        .max(50, 'SKU must be at most 50 characters')
+        .transform((val) => val.toUpperCase())
+        .optional(),
+);
+
 const offerSchema = z
     .object({
         type: z.enum(['none', 'percent', 'amount', 'bundle']).default('none'),
@@ -124,20 +136,19 @@ export const createProductSchema = z.object({
         .trim()
         .min(2, 'Name must be at least 2 characters')
         .max(120, 'Name must be at most 120 characters'),
-    // transform() asegura que el SKU siempre se guarda en mayúsculas
-    sku: z
-        .string({ error: 'SKU is required' })
-        .trim()
-        .min(2, 'SKU must be at least 2 characters')
-        .max(50, 'SKU must be at most 50 characters')
-        .transform((val) => val.toUpperCase()),
+    // Si no llega SKU, el servicio genera uno único con prefijo LDR.
+    sku: skuSchema,
     price: z
         .number({ error: 'Price is required' })
         .positive('Price must be a positive number'),
-    shortDescription: z.string().trim().max(300).optional(),
+    shortDescription: z
+        .string({ error: 'Short description is required' })
+        .trim()
+        .min(3, 'Short description must be at least 3 characters')
+        .max(300),
     description: z.string().trim().max(5000).optional(),
-    // ID de MongoDB de la categoría. Opcional al crear un producto.
-    category: objectIdString.optional(),
+    // ID de MongoDB de la categoría.
+    category: objectIdString,
     stock: z
         .number({ error: 'Stock is required' })
         .int('Stock must be an integer')

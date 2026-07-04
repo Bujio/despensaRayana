@@ -1,6 +1,7 @@
 import {
     approveSupplierService,
     deactivateSupplierService,
+    deleteSupplierService,
     getSupplierByIdService,
     getSupplierForUserService,
     listSuppliersService,
@@ -12,6 +13,7 @@ import {
     updateSupplierProfileService,
     uploadSupplierImagesService,
     uploadSupplierLogoService,
+    uploadSupplierMainImageService,
 } from '../services/suppliers.js';
 import { HttpError } from '../utils/http-error.js';
 
@@ -101,6 +103,18 @@ export const suppliersController = () => {
         }
     };
 
+    const uploadMySupplierMainImage = async (req, res, next) => {
+        try {
+            const supplier = await uploadSupplierMainImageService(
+                req.user.id,
+                req.files || [],
+            );
+            return res.status(200).json(supplier);
+        } catch (error) {
+            next(error);
+        }
+    };
+
     const approveSupplier = async (req, res, next) => {
         try {
             const supplier = await approveSupplierService(
@@ -133,6 +147,18 @@ export const suppliersController = () => {
                 req.user.id,
             );
             return res.status(200).json(supplier);
+        } catch (error) {
+            next(error);
+        }
+    };
+
+    const deleteSupplier = async (req, res, next) => {
+        try {
+            const result = await deleteSupplierService(req.params.id);
+            return res.status(200).json({
+                ...result,
+                message: 'Supplier deleted successfully',
+            });
         } catch (error) {
             next(error);
         }
@@ -177,6 +203,7 @@ export const suppliersController = () => {
     return {
         approveSupplier,
         deactivateSupplier,
+        deleteSupplier,
         getMySupplier,
         getSupplier,
         listSuppliers,
@@ -188,5 +215,6 @@ export const suppliersController = () => {
         updateMySupplier,
         uploadMySupplierImages,
         uploadMySupplierLogo,
+        uploadMySupplierMainImage,
     };
 };

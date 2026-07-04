@@ -8,6 +8,8 @@ import {
     addSupplierProductImagesService,
     updateSupplierProductService,
     updateProductService,
+    approveProductService,
+    rejectProductService,
     deleteSupplierProductService,
     deleteProductService,
     addProductImagesService,
@@ -154,6 +156,33 @@ export const productsController = () => {
         }
     };
 
+    const approveProduct = async (req, res, next) => {
+        try {
+            const product = await approveProductService(
+                req.params.id,
+                req.user.id,
+            );
+            if (!product) throw new HttpError('Product not found', 404);
+            return res.status(200).json(product);
+        } catch (error) {
+            next(error);
+        }
+    };
+
+    const rejectProduct = async (req, res, next) => {
+        try {
+            const product = await rejectProductService(
+                req.params.id,
+                req.body?.reason,
+                req.user.id,
+            );
+            if (!product) throw new HttpError('Product not found', 404);
+            return res.status(200).json(product);
+        } catch (error) {
+            next(error);
+        }
+    };
+
     const deleteSupplierProduct = async (req, res, next) => {
         try {
             const product = await deleteSupplierProductService(
@@ -207,6 +236,8 @@ export const productsController = () => {
         deleteSupplierProduct,
         uploadSupplierProductImages,
         updateProduct,
+        approveProduct,
+        rejectProduct,
         deleteProduct,
         uploadImages,
     };

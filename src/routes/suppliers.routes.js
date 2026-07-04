@@ -17,6 +17,7 @@ import {
 const {
     approveSupplier,
     deactivateSupplier,
+    deleteSupplier,
     getMySupplier,
     getSupplier,
     listSuppliers,
@@ -28,6 +29,7 @@ const {
     updateMySupplier,
     uploadMySupplierImages,
     uploadMySupplierLogo,
+    uploadMySupplierMainImage,
 } = suppliersController();
 
 export const suppliersRouter = Router();
@@ -80,6 +82,15 @@ suppliersRouter.post(
     uploadMySupplierImages,
 );
 
+suppliersRouter.post(
+    '/me/main-image',
+    writeLimiter,
+    authMiddleware,
+    roleMiddleware('supplier'),
+    upload,
+    uploadMySupplierMainImage,
+);
+
 suppliersRouter.get(
     '/:id',
     validateObjectId,
@@ -114,6 +125,15 @@ suppliersRouter.patch(
     authMiddleware,
     roleMiddleware('admin'),
     deactivateSupplier,
+);
+
+suppliersRouter.delete(
+    '/:id',
+    writeLimiter,
+    validateObjectId,
+    authMiddleware,
+    roleMiddleware('admin'),
+    deleteSupplier,
 );
 
 suppliersRouter.patch(

@@ -68,10 +68,4 @@ usersRouter.patch(
     validate(updateUserSchema),
     updateUser,
 );
-usersRouter.delete(
-    '/:id',
-    validateObjectId,
-    authMiddleware,
-    roleMiddleware('admin'),
-    deleteUser,
-);
+usersRouter.delete('/:id', validateObjectId, authMiddleware, deleteUser);
