@@ -278,7 +278,7 @@ export const updateSupplierProductService = async (userId, productId, data) => {
         nextData.reviewedBy = null;
     }
     return await Product.findByIdAndUpdate(productId, nextData, {
-        new: true,
+        returnDocument: 'after',
         runValidators: true,
     });
 };
@@ -328,13 +328,13 @@ export const addSupplierProductImagesService = async (
     return await Product.findByIdAndUpdate(
         productId,
         { $push: { images: { $each: newImages } } },
-        { new: true, runValidators: true },
+        { returnDocument: 'after', runValidators: true },
     );
 };
 
 export const updateProductService = async (id, data) => {
     return await Product.findByIdAndUpdate(id, data, {
-        new: true, // devuelve el documento actualizado
+        returnDocument: 'after', // devuelve el documento actualizado
         runValidators: true, // aplica las validaciones del schema de Mongoose
     });
 };
@@ -431,6 +431,6 @@ export const addProductImagesService = async (id, files) => {
     return await Product.findByIdAndUpdate(
         id,
         { $push: { images: { $each: newImages } } },
-        { new: true },
+        { returnDocument: 'after' },
     );
 };

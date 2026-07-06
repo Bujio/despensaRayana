@@ -296,7 +296,7 @@ const cancelOrder = async (
  */
 export const updateOrderService = async (id, data) => {
     return await Order.findByIdAndUpdate(id, data, {
-        new: true, // devuelve el documento actualizado
+        returnDocument: 'after', // devuelve el documento actualizado
         runValidators: true, // aplica las validaciones del schema de Mongoose
     });
 };

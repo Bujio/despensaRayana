@@ -65,7 +65,7 @@ export const updateUserService = async (id, data) => {
         update.password = await bcrypt.hash(update.password, 10);
     }
     return await User.findByIdAndUpdate(id, update, {
-        new: true, // devuelve el documento actualizado, no el original
+        returnDocument: 'after', // devuelve el documento actualizado, no el original
         runValidators: true, // aplica las validaciones del schema de Mongoose
     }).select('-password');
 };

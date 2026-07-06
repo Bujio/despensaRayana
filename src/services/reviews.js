@@ -42,7 +42,7 @@ export const createReviewService = async (productId, userId, data) => {
             { ...data, product: productId, user: userId },
             {
                 upsert: true,
-                new: true,
+                returnDocument: 'after',
                 setDefaultsOnInsert: true,
                 runValidators: true,
             },
@@ -57,7 +57,7 @@ export const getReviewService = async (reviewId) => {
 export const updateReviewService = async (reviewId, data) => {
     return await populateReview(
         Review.findByIdAndUpdate(reviewId, data, {
-            new: true,
+            returnDocument: 'after',
             runValidators: true,
         }),
     );

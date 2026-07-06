@@ -242,7 +242,7 @@ export const updateSupplierProfileService = async (userId, data) => {
     if (nextData.name && !nextData.slug) nextData.slug = slugify(nextData.name);
 
     const supplier = await Supplier.findOneAndUpdate({ userId }, nextData, {
-        new: true,
+        returnDocument: 'after',
         runValidators: true,
     });
     if (!supplier) throw new HttpError('Supplier profile not found', 404);
@@ -257,7 +257,7 @@ export const uploadSupplierLogoService = async (userId, files = []) => {
     const supplier = await Supplier.findOneAndUpdate(
         { userId },
         { logo },
-        { new: true, runValidators: true },
+        { returnDocument: 'after', runValidators: true },
     );
     if (!supplier) throw new HttpError('Supplier profile not found', 404);
     return supplier;
@@ -271,7 +271,7 @@ export const uploadSupplierMainImageService = async (userId, files = []) => {
     const supplier = await Supplier.findOneAndUpdate(
         { userId },
         { mainImage },
-        { new: true, runValidators: true },
+        { returnDocument: 'after', runValidators: true },
     );
     if (!supplier) throw new HttpError('Supplier profile not found', 404);
     return supplier;
@@ -284,7 +284,7 @@ export const uploadSupplierImagesService = async (userId, files = []) => {
     const supplier = await Supplier.findOneAndUpdate(
         { userId },
         { $push: { gallery: { $each: images } } },
-        { new: true, runValidators: true },
+        { returnDocument: 'after', runValidators: true },
     );
     if (!supplier) throw new HttpError('Supplier profile not found', 404);
     return supplier;
@@ -299,7 +299,7 @@ const setSupplierStatus = async (id, status, adminId, extra = {}) => {
             reviewedAt: new Date(),
             reviewedBy: adminId,
         },
-        { new: true, runValidators: true },
+        { returnDocument: 'after', runValidators: true },
     );
     if (!supplier) throw new HttpError('Supplier not found', 404);
     return supplier;
@@ -378,7 +378,7 @@ export const setSupplierFeaturedService = async (id, featured) => {
     const supplier = await Supplier.findByIdAndUpdate(
         id,
         { featured },
-        { new: true, runValidators: true },
+        { returnDocument: 'after', runValidators: true },
     );
     if (!supplier) throw new HttpError('Supplier not found', 404);
     return supplier;
@@ -391,7 +391,7 @@ export const setSupplierInternalNotesService = async (
     const supplier = await Supplier.findByIdAndUpdate(
         id,
         { internalNotes },
-        { new: true, runValidators: true },
+        { returnDocument: 'after', runValidators: true },
     );
     if (!supplier) throw new HttpError('Supplier not found', 404);
     return supplier;

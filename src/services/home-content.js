@@ -110,15 +110,11 @@ export const updateHomeContentService = async (data, userId) => {
         updatedBy: userId,
     });
 
-    return await HomeContent.findOneAndUpdate(
-        { key: 'homepage' },
-        normalized,
-        {
-            new: true,
-            upsert: true,
-            setDefaultsOnInsert: true,
-        },
-    ).lean();
+    return await HomeContent.findOneAndUpdate({ key: 'homepage' }, normalized, {
+        returnDocument: 'after',
+        upsert: true,
+        setDefaultsOnInsert: true,
+    }).lean();
 };
 
 export const uploadHomeImagesService = async (files) => {
