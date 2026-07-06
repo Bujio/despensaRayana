@@ -36,7 +36,7 @@ REST API for a local-products online store from the comarca of Valencia de Alcá
 
 - **Runtime**: Node.js with ES Modules (`"type": "module"`)
 - **Framework**: Express 5
-- **Database**: MongoDB with Mongoose
+- **Database**: MongoDB with Mongoose 9
 - **Authentication**: JWT + bcryptjs
 - **Validation**: Zod v4
 - **Image upload**: Cloudinary + Multer
@@ -60,21 +60,21 @@ despensa-rayana/
 └── src/
     ├── db/
     │   ├── init.js                   # MongoDB connection
-│   └── models/
-│       ├── user.model.js
-│       ├── supplier.model.js
-│       ├── product.model.js
+    │   └── models/
+    │       ├── user.model.js
+    │       ├── supplier.model.js
+    │       ├── product.model.js
     │       ├── order.model.js        # Includes VALID_TRANSITIONS state machine
     │       ├── cart.model.js
     │       ├── category.model.js
     │       └── refresh-token.model.js
     ├── controllers/                  # HTTP layer (req/res)
     ├── services/                     # Business logic and DB access
-│   ├── auth.js                   # register / login / refresh / logout / email verify
-│   ├── users.js
-│   ├── suppliers.js               # supplier onboarding and review
-│   ├── supplier-reports.js         # supplier-only sales/orders/product reports
-│   ├── products.js
+    │   ├── auth.js                   # register / login / refresh / logout / email verify
+    │   ├── users.js
+    │   ├── suppliers.js              # supplier onboarding and review
+    │   ├── supplier-reports.js        # supplier-only sales/orders/product reports
+    │   ├── products.js
     │   ├── orders.js                 # Atomic stock decrement + rollback
     │   ├── cart.js
     │   ├── categories.js
@@ -487,14 +487,24 @@ Internal errors (`500`) always return `{ "message": "Internal server error" }` t
 
 ```bash
 npm run dev          # Start server with hot-reload (node --watch)
+npm start            # Start server without watch mode
+npm run lint         # Run ESLint over the backend source and tests
 npm test             # Run the full integration test suite (Jest)
 npm run test:watch   # Run tests in watch mode
+npm run audit        # Run npm audit with moderate severity threshold
 npm run prepare      # Install Husky git hooks (runs automatically after npm install)
 ```
 
-The test suite spins up an in-memory MongoDB instance via `mongodb-memory-server` and exercises real HTTP calls with `supertest` — no external services needed.
+The test suite spins up an in-memory MongoDB instance via `mongodb-memory-server` and exercises real HTTP calls with `supertest` — no external services needed. Jest runs in band and exits without `--forceExit`, so open handles should surface during development instead of being hidden.
 
 Commits are linted by commitlint (conventional commits) and staged files are formatted with Prettier and ESLint via lint-staged.
+
+Recommended pre-push check:
+
+```bash
+npm run lint
+npm test
+```
 
 ## Author
 
