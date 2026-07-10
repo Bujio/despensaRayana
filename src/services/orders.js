@@ -74,6 +74,106 @@ const calculateOrderTotal = (order) => {
     return Number(order.total ?? lineTotal ?? 0);
 };
 
+const isOfferActive = (offer, now = new Date()) => {
+    if (!offer?.active || offer.type === 'none') return false;
+    if (offer.validFrom && now < new Date(offer.validFrom)) return false;
+    if (offer.validUntil && now > new Date(offer.validUntil)) return false;
+    return true;
+};
+
+const getOfferPrice = (product) => {
+    const price = Number(product.price || 0);
+    const offer = product.offer;
+    if (!isOfferActive(offer)) return price;
+
+    if (offer.type === 'percent') {
+        return Math.max(price * (1 - Number(offer.value || 0) / 100), 0);
+    }
+
+    if (offer.type === 'amount') {
+        return Math.max(price - Number(offer.value || 0), 0);
+    }
+
+    if (
+        offer.type === 'bundle' &&
+        Number(offer.bundleQuantity) > 0 &&
+        Number(offer.bundlePayQuantity) > 0
+    ) {
+        return Math.max(
+            price *
+                (Number(offer.bundlePayQuantity) /
+                    Number(offer.bundleQuantity)),
+            0,
+        );
+    }
+
+    return price;
+};
+
+const assertProductCanBeOrdered = (product, sku) => {
+    if (!product)
+        throw new HttpError(`Product with SKU "${sku}" not found`, 404);
+    if (product.status && product.status !== 'published') {
+        throw new HttpError(`Product with SKU "${sku}" is not available`, 400);
+    }
+    if (product.supplier?.status && product.supplier.status !== 'active') {
+        throw new HttpError(`Product with SKU "${sku}" is not available`, 400);
+    }
+};
+
+const buildServerOrderProducts = async (products, session = null) => {
+    const lines = [];
+
+    for (const item of products) {
+        const sku = String(item.sku || '')
+            .trim()
+            .toUpperCase();
+        const count = Number(item.count || 1);
+        const product = await Product.findOne({ sku }).session(session);
+        assertProductCanBeOrdered(product, sku);
+
+        const regularPrice = Number(product.price || 0);
+        const price = Number(getOfferPrice(product).toFixed(2));
+        const discount = Number(Math.max(regularPrice - price, 0).toFixed(2));
+        const total = Number((price * count).toFixed(2));
+
+        lines.push({
+            sku,
+            count,
+            price,
+            discount,
+            total,
+        });
+    }
+
+    return lines;
+};
+
+const buildServerOrderData = async (data, session = null) => {
+    const products = await buildServerOrderProducts(data.products, session);
+    const total = Number(
+        products
+            .reduce((sum, item) => sum + Number(item.total || 0), 0)
+            .toFixed(2),
+    );
+
+    const { paymentMethod, ...orderData } = data;
+
+    return {
+        ...orderData,
+        products,
+        discount: products.reduce(
+            (sum, item) => sum + Number(item.discount || 0) * (item.count || 1),
+            0,
+        ),
+        total,
+        payment: {
+            method: paymentMethod || 'external_pending',
+            status: 'pending',
+        },
+    };
+};
+
 /**
  * Comprueba si el cluster de MongoDB soporta transacciones.
  * Las transacciones requieren un replica set o un sharded cluster:
@@ -172,8 +272,9 @@ export const createOrderService = async (data) => {
         try {
             let order;
             await session.withTransaction(async () => {
-                await decrementStockAtomic(data.products, session);
-                const created = await Order.create([data], { session });
+                const orderData = await buildServerOrderData(data, session);
+                await decrementStockAtomic(orderData.products, session);
+                const created = await Order.create([orderData], { session });
                 order = created[0];
             });
             sendOrderConfirmationEmail(order).catch((err) =>
@@ -188,14 +289,16 @@ export const createOrderService = async (data) => {
         }
     }
 
+    const orderData = await buildServerOrderData(data);
+
     // Fallback standalone: decremento atómico + rollback manual.
-    await decrementStockAtomic(data.products);
+    await decrementStockAtomic(orderData.products);
     let order;
     try {
-        order = await Order.create(data);
+        order = await Order.create(orderData);
     } catch (err) {
         await Promise.all(
-            data.products.map(({ sku, count = 1 }) =>
+            orderData.products.map(({ sku, count = 1 }) =>
                 Product.updateOne({ sku }, { $inc: { stock: count } }),
             ),
         );

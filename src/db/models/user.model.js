@@ -47,6 +47,8 @@ const userSchema = new Schema(
         // Comparamos con el hash en memoria al validar el enlace recibido.
         emailVerificationTokenHash: { type: String, default: null },
         emailVerificationExpiresAt: { type: Date, default: null },
+        passwordResetTokenHash: { type: String, default: null },
+        passwordResetExpiresAt: { type: Date, default: null },
     },
     { timestamps: true },
 );

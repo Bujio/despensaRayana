@@ -63,6 +63,25 @@ const RefundSchema = new Schema(
     { _id: false },
 );
 
+const PaymentSchema = new Schema(
+    {
+        method: {
+            type: String,
+            enum: ['external_pending', 'manual_transfer'],
+            default: 'external_pending',
+        },
+        status: {
+            type: String,
+            enum: ['pending', 'paid', 'failed', 'refunded'],
+            default: 'pending',
+        },
+        provider: { type: String, trim: true },
+        providerSessionId: { type: String, trim: true },
+        paidAt: { type: Date },
+    },
+    { _id: false },
+);
+
 // Estados posibles de un pedido y las transiciones permitidas entre ellos:
 //
 //   pending → processing → shipped → delivered
@@ -123,6 +142,7 @@ const OrderSchema = new Schema(
         },
         cancellation: CancellationSchema,
         refund: RefundSchema,
+        payment: PaymentSchema,
     },
     { timestamps: true },
 );

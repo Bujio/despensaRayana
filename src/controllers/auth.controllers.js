@@ -5,6 +5,8 @@ import {
     logoutService,
     verifyEmailService,
     resendVerificationService,
+    requestPasswordResetService,
+    resetPasswordService,
 } from '../services/auth.js';
 
 export const authController = () => {
@@ -70,6 +72,35 @@ export const authController = () => {
         }
     };
 
+    const requestPasswordReset = async (req, res, next) => {
+        try {
+            const resetToken = await requestPasswordResetService(
+                req.body.email,
+            );
+            const response = {
+                message:
+                    'If the email is registered, a password reset link has been sent',
+            };
+            if (process.env.NODE_ENV === 'test' && resetToken) {
+                response.resetToken = resetToken;
+            }
+            return res.status(200).json(response);
+        } catch (error) {
+            next(error);
+        }
+    };
+
+    const resetPassword = async (req, res, next) => {
+        try {
+            await resetPasswordService(req.body.token, req.body.password);
+            return res
+                .status(200)
+                .json({ message: 'Password reset successful' });
+        } catch (error) {
+            next(error);
+        }
+    };
+
     return {
         register,
         login,
@@ -77,5 +108,7 @@ export const authController = () => {
         logout,
         verifyEmail,
         resendVerification,
+        requestPasswordReset,
+        resetPassword,
     };
 };

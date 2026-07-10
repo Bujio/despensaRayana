@@ -122,3 +122,63 @@ describe('POST /api/auth/refresh', () => {
         expect(afterReuse.status).toBe(401);
     });
 });
+
+describe('GET /api/health', () => {
+    test('returns service status', async () => {
+        const res = await request(app).get('/api/health');
+        expect(res.status).toBe(200);
+        expect(res.body.status).toBe('ok');
+    });
+});
+
+describe('POST /api/auth/password-reset', () => {
+    test('resets password with a one-use token', async () => {
+        await request(app).post('/api/auth/register').send({
+            name: 'Reset User',
+            email: 'reset@test.com',
+            password: 'Secret123',
+        });
+
+        const requestReset = await request(app)
+            .post('/api/auth/password-reset/request')
+            .send({ email: 'reset@test.com' });
+        expect(requestReset.status).toBe(200);
+        expect(requestReset.body.resetToken).toEqual(expect.any(String));
+
+        const reset = await request(app)
+            .post('/api/auth/password-reset/confirm')
+            .send({
+                token: requestReset.body.resetToken,
+                password: 'NewSecret123',
+            });
+        expect(reset.status).toBe(200);
+
+        const oldLogin = await request(app).post('/api/auth/login').send({
+            email: 'reset@test.com',
+            password: 'Secret123',
+        });
+        expect(oldLogin.status).toBe(401);
+
+        const newLogin = await request(app).post('/api/auth/login').send({
+            email: 'reset@test.com',
+            password: 'NewSecret123',
+        });
+        expect(newLogin.status).toBe(200);
+
+        const reused = await request(app)
+            .post('/api/auth/password-reset/confirm')
+            .send({
+                token: requestReset.body.resetToken,
+                password: 'AnotherSecret123',
+            });
+        expect(reused.status).toBe(400);
+    });
+
+    test('does not reveal whether reset email exists', async () => {
+        const res = await request(app)
+            .post('/api/auth/password-reset/request')
+            .send({ email: 'missing@test.com' });
+        expect(res.status).toBe(200);
+        expect(res.body.resetToken).toBeUndefined();
+    });
+});

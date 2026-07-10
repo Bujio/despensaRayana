@@ -1,4 +1,5 @@
 import express from 'express';
+import crypto from 'node:crypto';
 import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
@@ -10,6 +11,12 @@ import { swaggerSpec } from './src/docs/swagger.js';
 const app = express();
 
 app.disable('x-powered-by');
+
+app.use((req, res, next) => {
+    req.requestId = req.headers['x-request-id'] || crypto.randomUUID();
+    res.setHeader('X-Request-Id', req.requestId);
+    next();
+});
 
 // helmet añade cabeceras HTTP de seguridad (X-Frame-Options, CSP, etc.)
 app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
@@ -55,10 +62,22 @@ app.use(
 );
 // Sirve las imágenes guardadas localmente cuando Cloudinary no está configurado.
 app.use('/uploads', express.static('uploads'));
+morgan.token('request-id', (req) => req.requestId);
+
 // morgan registra cada petición en consola.
 // 'dev' en desarrollo (colorido y conciso); 'combined' en producción (Apache format, más detallado).
-app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
+app.use(
+    morgan(
+        process.env.NODE_ENV === 'production'
+            ? 'combined request_id=:request-id'
+            : 'dev',
+    ),
+);
 
+// Healthcheck simple para balanceadores, uptime monitors y despliegues.
+app.get('/api/health', (_req, res) =>
+    res.status(200).json({ status: 'ok', service: 'despensa-rayana-api' }),
+);
 // Documentación interactiva de la API en /api/docs.
 // El JSON crudo de la especificación está disponible en /api/docs.json
 // para clientes automáticos (Postman, generadores de SDK, etc.).
@@ -75,20 +94,38 @@ app.use(
 app.use('/api', apiLimiter, router);
 
 // Captura cualquier ruta que no haya sido definida
-app.use((_req, res) => {
-    res.status(404).json({ message: 'Route not found' });
+app.use((req, res) => {
+    res.status(404).json({
+        message: 'Route not found',
+        requestId: req.requestId,
+    });
 });
 
 // Manejador global de errores.
 // Express lo identifica como error handler por tener 4 parámetros (err, req, res, next).
 // Cualquier error pasado a next(error) en los controllers llega aquí.
-app.use((err, _req, res, _next) => {
+app.use((err, req, res, _next) => {
     const status = err.status ?? 500;
     // Para errores operacionales (status definido) devolvemos el mensaje.
     // Para errores inesperados (500) ocultamos el mensaje interno para no
     // exponer detalles de implementación al cliente.
     const message = status < 500 ? err.message : 'Internal server error';
-    res.status(status).json({ message });
+    if (status >= 500) {
+        console.error(
+            JSON.stringify({
+                level: 'error',
+                requestId: req.requestId,
+                method: req.method,
+                path: req.originalUrl,
+                message: err.message,
+                stack:
+                    process.env.NODE_ENV === 'production'
+                        ? undefined
+                        : err.stack,
+            }),
+        );
+    }
+    res.status(status).json({ message, requestId: req.requestId });
 });
 
 export { app };

@@ -19,19 +19,17 @@ const orderProductSchema = z.object({
         .positive('Count must be a positive integer')
         .max(10_000, 'Count is too large')
         .optional(),
-    price: z
-        .number({ error: 'Price is required' })
-        .positive('Price must be a positive number'),
-    discount: z.number().min(0).max(100).optional(),
-    // El impuesto se guarda como string para admitir formatos como "21%" o "IVA reducido"
-    tax: z.string().trim().max(50).optional(),
-    total: z.number().nonnegative().optional(),
+    // El cliente solo puede enviar SKU y cantidad. Precio, descuento,
+    // impuesto y total se calculan siempre en el backend desde Product.
 });
 
 const shippingAddressSchema = z
     .object({
         street: z.string().trim().min(3).max(160),
-        codePostal: z.string().trim().regex(/^\d{5}$/),
+        codePostal: z
+            .string()
+            .trim()
+            .regex(/^\d{5}$/),
         city: z.string().trim().min(2).max(80),
         country: z.string().trim().min(2).max(80),
         phone: z.string().trim().min(6).max(30),
@@ -53,12 +51,12 @@ export const createOrderSchema = z.object({
         .transform((val) => val.toLowerCase().trim()),
     date: z.coerce.date().optional(),
     shippingAddress: shippingAddressSchema,
+    paymentMethod: z.enum(['external_pending', 'manual_transfer']).optional(),
     products: z
         .array(orderProductSchema)
         .min(1, 'The order must contain at least one product')
         .max(100, 'The order cannot contain more than 100 products'),
-    discount: z.number().min(0).max(100).optional(),
-    total: z.number().nonnegative().optional(),
+    // Los descuentos y totales del pedido no se aceptan desde el cliente.
 });
 
 /**

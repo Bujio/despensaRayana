@@ -181,3 +181,27 @@ export const sendEmailVerificationEmail = async (user, plainToken) => {
         `,
     });
 };
+
+/**
+ * Envía un enlace de recuperación de contraseña.
+ * El enlace apunta al frontend y contiene el token plano de un solo uso.
+ *
+ * @param {{ email: string, name: string }} user
+ * @param {string} plainToken
+ */
+export const sendPasswordResetEmail = async (user, plainToken) => {
+    const baseUrl = process.env.APP_BASE_URL || 'http://localhost:5173';
+    const link = `${baseUrl}/cuenta?resetToken=${encodeURIComponent(plainToken)}`;
+    const name = escapeHtml(user.name || user.email);
+
+    await sendWithRetry({
+        to: user.email,
+        subject: 'Reset your password — Despensa Rayana',
+        html: `
+            <h2>Password reset request</h2>
+            <p>Hello ${name}, we received a request to reset your password.</p>
+            <p><a href="${escapeHtml(link)}">${escapeHtml(link)}</a></p>
+            <p>This link expires in 1 hour. If you did not request it, ignore this email.</p>
+        `,
+    });
+};

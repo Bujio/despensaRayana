@@ -8,10 +8,20 @@ import {
     loginSchema,
     refreshTokenSchema,
     resendVerificationSchema,
+    requestPasswordResetSchema,
+    resetPasswordSchema,
 } from '../schemas/user.schema.js';
 
-const { register, login, refresh, logout, verifyEmail, resendVerification } =
-    authController();
+const {
+    register,
+    login,
+    refresh,
+    logout,
+    verifyEmail,
+    resendVerification,
+    requestPasswordReset,
+    resetPassword,
+} = authController();
 
 /**
  * Limita los intentos de login a 10 por IP cada 15 minutos.
@@ -209,4 +219,17 @@ authRouter.post(
     resendLimiter,
     validate(resendVerificationSchema),
     resendVerification,
+);
+
+authRouter.post(
+    '/password-reset/request',
+    resendLimiter,
+    validate(requestPasswordResetSchema),
+    requestPasswordReset,
+);
+
+authRouter.post(
+    '/password-reset/confirm',
+    validate(resetPasswordSchema),
+    resetPassword,
 );
