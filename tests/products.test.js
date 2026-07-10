@@ -107,6 +107,40 @@ describe('GET /api/products', () => {
         expect(res.body.data.some((p) => p.sku === 'MIE-001')).toBe(true);
     });
 
+    test('search ranks an exact product name before contextual matches', async () => {
+        const category = await Category.create({ name: 'Artesanía' });
+        const supplier = { id: 1, name: 'Talleres de la Raya' };
+
+        await Product.create({
+            sku: 'PAN-001',
+            name: 'Panera',
+            shortDescription: 'Panera artesanal de fibras naturales',
+            description: 'Pieza tradicional elaborada a mano',
+            price: 29,
+            stock: 4,
+            category: category._id,
+            supplier,
+        });
+        await Product.create({
+            sku: 'CES-001',
+            name: 'Cesta artesanal',
+            shortDescription: 'Cesta para cocina y despensa',
+            description: 'Puede utilizarse como panera tradicional',
+            price: 24,
+            stock: 6,
+            category: category._id,
+            supplier,
+        });
+
+        const res = await request(app).get(
+            '/api/products?search=panera&sort=createdAt&order=desc',
+        );
+
+        expect(res.status).toBe(200);
+        expect(res.body.data).toHaveLength(2);
+        expect(res.body.data[0].sku).toBe('PAN-001');
+    });
+
     test('soft-deleted products are excluded from listings', async () => {
         await seedCatalog();
         const toDelete = await Product.findOne({ sku: 'MIE-001' });

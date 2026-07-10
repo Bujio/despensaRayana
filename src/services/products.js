@@ -85,6 +85,212 @@ const createUniqueProductSku = async (data, supplier = {}) => {
     throw new HttpError('Could not generate product SKU', 500);
 };
 
+const escapeRegExp = (value = '') =>
+    String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const normalizeSearchText = (value = '') =>
+    String(value || '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, ' ')
+        .trim();
+
+const getSearchTokens = (search = '') => [
+    ...new Set(normalizeSearchText(search).split(' ').filter(Boolean)),
+];
+
+const buildSearchExpressions = (search = '') => {
+    const terms = [
+        String(search || '').trim(),
+        ...String(search || '')
+            .split(/\s+/)
+            .map((term) => term.trim()),
+    ].filter(Boolean);
+
+    return [...new Set(terms)].map(
+        (term) => new RegExp(escapeRegExp(term), 'i'),
+    );
+};
+
+const buildSearchConditions = (expressions, categoryIds, supplierIds) => {
+    const fieldNames = [
+        'name',
+        'sku',
+        'shortDescription',
+        'description',
+        'supplier.name',
+        'supplier.supplierCode',
+    ];
+    const conditions = expressions.flatMap((expression) =>
+        fieldNames.map((fieldName) => ({ [fieldName]: expression })),
+    );
+
+    if (categoryIds.length) conditions.push({ category: { $in: categoryIds } });
+    if (supplierIds.length)
+        conditions.push({ supplierRef: { $in: supplierIds } });
+
+    return conditions;
+};
+
+const scoreSearchField = (value, query, tokens, weights) => {
+    const text = normalizeSearchText(value);
+    if (!text) return 0;
+
+    let score = 0;
+    const words = text.split(' ').filter(Boolean);
+
+    if (text === query) score = Math.max(score, weights.exact || 0);
+    if (text.startsWith(query)) score = Math.max(score, weights.prefix || 0);
+    if (words.some((word) => word.startsWith(query))) {
+        score = Math.max(score, weights.wordPrefix || 0);
+    }
+    if (text.includes(query)) score = Math.max(score, weights.contains || 0);
+
+    const matchedTokens = tokens.filter((token) => text.includes(token)).length;
+    if (tokens.length && matchedTokens === tokens.length) {
+        score += weights.allTokens || 0;
+    }
+    score += matchedTokens * (weights.token || 0);
+
+    return score;
+};
+
+const getProductSearchScore = (product, search) => {
+    const query = normalizeSearchText(search);
+    const tokens = getSearchTokens(search);
+    if (!query) return 0;
+
+    const categoryName = product.category?.name || '';
+    const categorySlug = product.category?.slug || '';
+    const supplierName =
+        product.supplier?.name || product.supplierRef?.name || '';
+    const supplierCode =
+        product.supplier?.supplierCode ||
+        product.supplierRef?.supplierCode ||
+        '';
+
+    return [
+        [
+            product.name,
+            {
+                exact: 10000,
+                prefix: 9500,
+                wordPrefix: 9000,
+                contains: 8500,
+                allTokens: 900,
+                token: 240,
+            },
+        ],
+        [
+            product.sku,
+            {
+                exact: 8200,
+                prefix: 7600,
+                wordPrefix: 7200,
+                contains: 6800,
+                allTokens: 600,
+                token: 180,
+            },
+        ],
+        [
+            categoryName,
+            {
+                exact: 5400,
+                prefix: 5000,
+                wordPrefix: 4600,
+                contains: 4200,
+                allTokens: 450,
+                token: 120,
+            },
+        ],
+        [
+            categorySlug,
+            {
+                exact: 5200,
+                prefix: 4800,
+                wordPrefix: 4400,
+                contains: 4000,
+                allTokens: 420,
+                token: 110,
+            },
+        ],
+        [
+            supplierName,
+            {
+                exact: 4300,
+                prefix: 3900,
+                wordPrefix: 3500,
+                contains: 3100,
+                allTokens: 320,
+                token: 90,
+            },
+        ],
+        [
+            supplierCode,
+            {
+                exact: 4200,
+                prefix: 3800,
+                wordPrefix: 3400,
+                contains: 3000,
+                allTokens: 300,
+                token: 80,
+            },
+        ],
+        [
+            product.shortDescription,
+            {
+                exact: 2600,
+                prefix: 2300,
+                wordPrefix: 2000,
+                contains: 1700,
+                allTokens: 220,
+                token: 60,
+            },
+        ],
+        [
+            product.description,
+            {
+                exact: 1500,
+                prefix: 1300,
+                wordPrefix: 1100,
+                contains: 900,
+                allTokens: 120,
+                token: 30,
+            },
+        ],
+    ].reduce(
+        (total, [value, weights]) =>
+            total + scoreSearchField(value, query, tokens, weights),
+        0,
+    );
+};
+
+const readSortValue = (product, sort) => {
+    if (sort === 'name') return normalizeSearchText(product.name);
+    if (sort === 'price') return Number(product.price || 0);
+    if (sort === 'stock') return Number(product.stock || 0);
+    const date = new Date(product.createdAt || 0);
+    return Number.isNaN(date.getTime()) ? 0 : date.getTime();
+};
+
+const compareBySearchRelevance = (search, sort, order) => (left, right) => {
+    const scoreDifference =
+        getProductSearchScore(right, search) -
+        getProductSearchScore(left, search);
+    if (scoreDifference !== 0) return scoreDifference;
+
+    const fallbackSort = SORTABLE_FIELDS.has(sort) ? sort : 'createdAt';
+    const direction = order === 'asc' ? 1 : -1;
+    const leftValue = readSortValue(left, fallbackSort);
+    const rightValue = readSortValue(right, fallbackSort);
+
+    if (typeof leftValue === 'string') {
+        return leftValue.localeCompare(String(rightValue)) * direction;
+    }
+
+    return (leftValue - rightValue) * direction;
+};
+
 const uploadFileToCloudinary = async (file) => {
     const result = await cloudinary.uploader.upload(file.path, {
         folder: 'products',
@@ -140,11 +346,11 @@ export const getProductService = async (id, { includeAll = false } = {}) => {
  *
  * Soporta:
  *   - `categoryId` → filtro por categoría
- *   - `search`     → búsqueda full-text sobre nombre y descripción (usa text index)
+ *   - `search`     → búsqueda ponderada por nombre, SKU, categoría, proveedor y descripciones
  *   - `inStock`    → true solo devuelve productos con stock > 0
  *   - `minPrice` / `maxPrice` → rango de precio
  *   - `sort`       → campo por el que ordenar (whitelist)
- *   - `order`      → 'asc' | 'desc' (por defecto asc, desc si es búsqueda por score)
+ *   - `order`      → 'asc' | 'desc' como desempate tras la relevancia de búsqueda
  *
  * @param {{ skip: number, limit: number }} pagination - Parámetros de paginación
  * @param {object} [filters] - Filtros opcionales
@@ -173,24 +379,51 @@ export const listProductsService = async (
         if (maxPrice != null) filter.price.$lte = maxPrice;
     }
 
-    // Búsqueda full-text. Requiere el índice de texto sobre name+description
-    // definido en el modelo. Mongo devuelve un `score` que usamos para ordenar
-    // por relevancia cuando no se pide otro criterio explícito.
-    let projection;
-    let defaultSort;
     if (search) {
-        filter.$text = { $search: search };
-        projection = { score: { $meta: 'textScore' } };
-        defaultSort = { score: { $meta: 'textScore' } };
+        const expressions = buildSearchExpressions(search);
+        const [matchingCategories, matchingSuppliers] = await Promise.all([
+            Category.find({
+                $or: expressions.flatMap((expression) => [
+                    { name: expression },
+                    { slug: expression },
+                ]),
+            }).select('_id'),
+            Supplier.find({
+                $or: expressions.flatMap((expression) => [
+                    { name: expression },
+                    { supplierCode: expression },
+                    { specialties: expression },
+                    { 'location.town': expression },
+                    { 'location.province': expression },
+                ]),
+            }).select('_id'),
+        ]);
+
+        filter.$or = buildSearchConditions(
+            expressions,
+            matchingCategories.map((category) => category._id),
+            matchingSuppliers.map((supplier) => supplier._id),
+        );
+
+        const rankedProducts = await Product.find(filter)
+            .populate('category', 'name slug')
+            .populate('supplierRef', 'name supplierCode status');
+
+        rankedProducts.sort(compareBySearchRelevance(search, sort, order));
+
+        return {
+            data: rankedProducts.slice(skip, skip + limit),
+            total: rankedProducts.length,
+        };
     }
 
     // Construimos el objeto de sort respetando la whitelist.
-    let sortObj = defaultSort ?? { createdAt: -1 };
+    let sortObj = { createdAt: -1 };
     if (sort && SORTABLE_FIELDS.has(sort)) {
         sortObj = { [sort]: order === 'desc' ? -1 : 1 };
     }
 
-    const query = Product.find(filter, projection)
+    const query = Product.find(filter)
         .populate('category', 'name slug')
         .populate('supplierRef', 'name supplierCode status')
         .sort(sortObj)
