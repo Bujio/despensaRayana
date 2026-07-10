@@ -85,3 +85,19 @@ export const resendVerificationSchema = z.object({
 export const updateUserSchema = registerSchema
     .partial()
     .extend({ role: z.enum(['user', 'admin', 'supplier']).optional() });
+
+export const requestPasswordResetSchema = z.object({
+    email: z
+        .email({ error: 'Invalid email format' })
+        .transform((val) => val.toLowerCase().trim()),
+});
+
+export const resetPasswordSchema = z.object({
+    token: z.string({ error: 'Reset token is required' }).min(1).max(512),
+    password: z
+        .string({ error: 'Password is required' })
+        .min(6, 'Password must be at least 6 characters')
+        .max(128, 'Password must be at most 128 characters')
+        .regex(/[A-Z]/, 'Password must contain at least one uppercase letter')
+        .regex(/[0-9]/, 'Password must contain at least one number'),
+});

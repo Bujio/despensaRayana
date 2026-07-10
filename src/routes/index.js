@@ -9,6 +9,7 @@ import { reviewsRouter } from './reviews.routes.js';
 import { homeContentRouter } from './home-content.routes.js';
 import { supplierRouter } from './supplier.routes.js';
 import { suppliersRouter } from './suppliers.routes.js';
+import { supplierMessagesRouter } from './supplier-messages.routes.js';
 
 export const router = Router();
 
@@ -22,3 +23,4 @@ router.use('/reviews', reviewsRouter);
 router.use('/home-content', homeContentRouter);
 router.use('/supplier', supplierRouter);
 router.use('/suppliers', suppliersRouter);
+router.use('/supplier-messages', supplierMessagesRouter);

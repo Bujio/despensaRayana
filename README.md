@@ -143,6 +143,8 @@ Copy `.env.example` to `.env` and fill in each value. Variables marked **require
 | `EMAIL_USER`            |    ✅    | SMTP username                                                                                            |
 | `EMAIL_PASS`            |    ✅    | SMTP password or API key                                                                                 |
 | `EMAIL_FROM`            |    ✅    | Sender email address                                                                                     |
+| `APP_BASE_URL`          |          | Public frontend URL used in account, verification and password recovery emails                           |
+| `API_BASE_URL`          |          | Public backend URL used to build local upload URLs when Cloudinary is not configured                     |
 | `CLOUDINARY_CLOUD_NAME` |    ✅    | Cloudinary cloud name                                                                                    |
 | `CLOUDINARY_API_KEY`    |    ✅    | Cloudinary API key                                                                                       |
 | `CLOUDINARY_API_SECRET` |    ✅    | Cloudinary API secret                                                                                    |
@@ -161,14 +163,16 @@ All routes are prefixed with `/api`.
 
 ### Authentication — `/api/auth`
 
-| Method | Route                  | Description                                   | Access | Rate limit      |
-| ------ | ---------------------- | --------------------------------------------- | ------ | --------------- |
-| POST   | `/register`            | Create an account and send verification email | Public | 5/hour per IP   |
-| POST   | `/login`               | Sign in — returns access + refresh token      | Public | 10/15min per IP |
-| POST   | `/refresh`             | Rotate refresh token, issue new pair          | Public |                 |
-| POST   | `/logout`              | Revoke a refresh token (single-device logout) | Public |                 |
-| GET    | `/verify/:token`       | Confirm email from the verification link      | Public |                 |
-| POST   | `/resend-verification` | Re-send the verification email                | Public | 3/hour per IP   |
+| Method | Route                     | Description                                   | Access | Rate limit      |
+| ------ | ------------------------- | --------------------------------------------- | ------ | --------------- |
+| POST   | `/register`               | Create an account and send verification email | Public | 5/hour per IP   |
+| POST   | `/login`                  | Sign in — returns access + refresh token      | Public | 10/15min per IP |
+| POST   | `/refresh`                | Rotate refresh token, issue new pair          | Public |                 |
+| POST   | `/logout`                 | Revoke a refresh token (single-device logout) | Public |                 |
+| GET    | `/verify/:token`          | Confirm email from the verification link      | Public |                 |
+| POST   | `/resend-verification`    | Re-send the verification email                | Public | 3/hour per IP   |
+| POST   | `/password-reset/request` | Request a password reset email                | Public | 3/hour per IP   |
+| POST   | `/password-reset/confirm` | Confirm password reset with one-use token     | Public |                 |
 
 **Register body:**
 
@@ -448,7 +452,7 @@ New accounts are always created with role `user`. Promote a user to `admin` dire
 { "message": "Invalid credentials" }
 ```
 
-Internal errors (`500`) always return `{ "message": "Internal server error" }` to avoid leaking implementation details.
+Internal errors (`500`) always return `{ "message": "Internal server error", "requestId": "..." }` to avoid leaking implementation details while keeping each failure traceable. Every response also includes the `X-Request-Id` header.
 
 **Paginated response:**
 
@@ -478,6 +482,8 @@ Internal errors (`500`) always return `{ "message": "Internal server error" }` t
 - **ObjectId validation** runs before `:id` route handlers to prevent 500s from malformed IDs.
 - **Refresh token rotation**: every use issues a new refresh token and invalidates the previous one. Presenting a revoked refresh token is treated as a reuse attack — all active sessions for the user are immediately revoked.
 - **Email verification tokens**: stored as a SHA-256 hash in the database; the plain token is only sent by email and never persisted.
+- **Password reset tokens**: stored as SHA-256 hashes, expire after one hour and are invalidated after successful use.
+- **Request tracing**: every request receives an `X-Request-Id`; unexpected errors are logged with that identifier for operational debugging.
 - **Atomic stock decrement** prevents overselling under concurrent orders and rolls back partial decrements if any SKU fails.
 - **Soft deletes** on users and products: records are flagged with `deletedAt` and excluded from normal queries without losing referential integrity.
 - **Fail-fast startup**: missing env vars abort boot with a clear message.

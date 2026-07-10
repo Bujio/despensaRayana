@@ -4,7 +4,7 @@ import { User } from '../db/models/user.model.js';
 import { RefreshToken } from '../db/models/refresh-token.model.js';
 import { HttpError } from '../utils/http-error.js';
 import { generateRandomToken, hashToken } from '../utils/tokens.js';
-import { sendEmailVerificationEmail } from './email.js';
+import { sendEmailVerificationEmail, sendPasswordResetEmail } from './email.js';
 import { logger } from '../utils/logger.js';
 
 // Duración del access token: corta para que un token filtrado expire pronto.
@@ -15,6 +15,7 @@ const ACCESS_TOKEN_TTL = '15m';
 const REFRESH_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 días
 // Ventana de validez del enlace de verificación de email.
 const EMAIL_VERIFICATION_TTL_MS = 24 * 60 * 60 * 1000; // 24h
+const PASSWORD_RESET_TTL_MS = 60 * 60 * 1000; // 1h
 
 /**
  * Firma un JWT de acceso con los datos del usuario.
@@ -93,6 +94,7 @@ export const registerService = async ({
     const {
         password: _pw,
         emailVerificationTokenHash: _tk,
+        passwordResetTokenHash: _resetTk,
         ...safeUser
     } = newUser.toObject();
     return safeUser;
@@ -116,6 +118,7 @@ export const loginService = async ({ email, password }) => {
     const {
         password: _pw,
         emailVerificationTokenHash: _tk,
+        passwordResetTokenHash: _resetTk,
         ...safeUser
     } = user.toObject();
     return { accessToken, refreshToken, user: safeUser };
@@ -213,4 +216,51 @@ export const resendVerificationService = async (email) => {
     // No filtramos si el email existe o no: devolvemos OK en cualquier caso.
     if (!user || user.emailVerified) return;
     await issueEmailVerification(user);
+};
+
+/**
+ * Solicita recuperación de contraseña. La respuesta es siempre genérica para
+ * no revelar si una cuenta existe o no.
+ */
+export const requestPasswordResetService = async (email) => {
+    const user = await User.findOne({ email });
+    if (!user) return null;
+
+    const plain = generateRandomToken(32);
+    user.passwordResetTokenHash = hashToken(plain);
+    user.passwordResetExpiresAt = new Date(Date.now() + PASSWORD_RESET_TTL_MS);
+    await user.save();
+
+    sendPasswordResetEmail(user, plain).catch((err) =>
+        logger.error('Failed to send password reset email:', err.message),
+    );
+
+    return process.env.NODE_ENV === 'test' ? plain : null;
+};
+
+/**
+ * Restablece la contraseña con un token de un solo uso.
+ */
+export const resetPasswordService = async (plainToken, password) => {
+    if (!plainToken) throw new HttpError('Reset token required', 400);
+
+    const tokenHash = hashToken(plainToken);
+    const user = await User.findOne({ passwordResetTokenHash: tokenHash });
+    if (!user || !user.passwordResetExpiresAt) {
+        throw new HttpError('Invalid reset token', 400);
+    }
+
+    if (user.passwordResetExpiresAt < new Date()) {
+        throw new HttpError('Reset token has expired', 400);
+    }
+
+    user.password = await bcrypt.hash(password, 10);
+    user.passwordResetTokenHash = null;
+    user.passwordResetExpiresAt = null;
+    await user.save();
+
+    await RefreshToken.updateMany(
+        { userId: user._id, revokedAt: null },
+        { $set: { revokedAt: new Date() } },
+    );
 };

@@ -73,9 +73,43 @@ describe('POST /api/orders', () => {
 
         expect(res.status).toBe(201);
         expect(res.body.email).toBe(email);
+        expect(res.body.products[0].price).toBe(10);
+        expect(res.body.products[0].total).toBe(20);
+        expect(res.body.total).toBe(20);
+        expect(res.body.payment.status).toBe('pending');
 
         const product = await Product.findOne({ sku: 'SKU-TEST' });
         expect(product.stock).toBe(3);
+    });
+
+    test('ignores manipulated prices and totals sent by the client', async () => {
+        await seedProduct({ price: 10 });
+        const { accessToken, email } = await registerAndLogin();
+
+        const res = await request(app)
+            .post('/api/orders')
+            .set('Authorization', `Bearer ${accessToken}`)
+            .send({
+                email,
+                products: [
+                    {
+                        sku: 'SKU-TEST',
+                        count: 2,
+                        price: 0.01,
+                        discount: 99,
+                        total: 0.02,
+                    },
+                ],
+                discount: 99,
+                total: 0.02,
+            });
+
+        expect(res.status).toBe(201);
+        expect(res.body.products[0].price).toBe(10);
+        expect(res.body.products[0].discount).toBe(0);
+        expect(res.body.products[0].total).toBe(20);
+        expect(res.body.discount).toBe(0);
+        expect(res.body.total).toBe(20);
     });
 
     test('rejects insufficient stock with 400 and leaves stock untouched', async () => {

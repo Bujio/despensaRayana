@@ -13,6 +13,8 @@
         "test:watch": "cross-env NODE_OPTIONS=--experimental-vm-modules jest --watch",
         "lint": "eslint .",
         "audit": "npm audit --audit-level=moderate",
+        "seed:demo": "node scripts/seed-demo-data.js",
+        "seed:demo-images": "node scripts/update-demo-product-images.js",
         "prepare": "husky"
     },
     "jest": {
