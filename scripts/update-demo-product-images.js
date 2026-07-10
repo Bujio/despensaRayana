@@ -1,6 +1,6 @@
+/* eslint-disable no-console -- CLI image updater reports progress and failures to the terminal. */
 import 'dotenv/config';
 import mongoose from 'mongoose';
-import { Category } from '../src/db/models/category.model.js';
 import { Product } from '../src/db/models/product.model.js';
 
 const MONGO_URI =

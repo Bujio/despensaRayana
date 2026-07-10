@@ -7,6 +7,7 @@ import swaggerUi from 'swagger-ui-express';
 import { router } from './src/routes/index.js';
 import { apiLimiter } from './src/middlewares/ratelimit.middleware.js';
 import { swaggerSpec } from './src/docs/swagger.js';
+import { logger } from './src/utils/logger.js';
 
 const app = express();
 
@@ -111,7 +112,7 @@ app.use((err, req, res, _next) => {
     // exponer detalles de implementación al cliente.
     const message = status < 500 ? err.message : 'Internal server error';
     if (status >= 500) {
-        console.error(
+        logger.error(
             JSON.stringify({
                 level: 'error',
                 requestId: req.requestId,

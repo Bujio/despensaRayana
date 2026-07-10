@@ -1,3 +1,4 @@
+/* eslint-disable no-console -- CLI seed reports progress and failures to the terminal. */
 import 'dotenv/config';
 import bcrypt from 'bcryptjs';
 import mongoose from 'mongoose';
