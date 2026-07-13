@@ -107,13 +107,13 @@ describe('GET /api/products', () => {
         expect(res.body.data.some((p) => p.sku === 'MIE-001')).toBe(true);
     });
 
-    test('search ranks an exact product name before contextual matches', async () => {
+    test('search ranks a product-name keyword before contextual matches', async () => {
         const category = await Category.create({ name: 'Artesanía' });
         const supplier = { id: 1, name: 'Talleres de la Raya' };
 
         await Product.create({
             sku: 'PAN-001',
-            name: 'Panera',
+            name: 'Panera artesanal de mimbre',
             shortDescription: 'Panera artesanal de fibras naturales',
             description: 'Pieza tradicional elaborada a mano',
             price: 29,
