@@ -79,3 +79,7 @@ export const updateOrderStatusSchema = z.object({
         },
     ),
 });
+
+export const cancelOrderSchema = z.object({
+    reason: z.string().trim().max(500).optional(),
+});

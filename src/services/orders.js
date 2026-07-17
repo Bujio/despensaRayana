@@ -65,6 +65,47 @@ const restoreStock = async (products, session = null) => {
     );
 };
 
+const groupOrderProductQuantities = (products) => {
+    const quantities = new Map();
+
+    for (const product of products) {
+        const sku = String(product.sku || '')
+            .trim()
+            .toUpperCase();
+        const count = Number(product.count ?? 1);
+
+        if (!sku || !Number.isInteger(count) || count <= 0) {
+            throw new HttpError(
+                'Order contains invalid product data and cannot be cancelled',
+                409,
+            );
+        }
+
+        quantities.set(sku, (quantities.get(sku) || 0) + count);
+    }
+
+    return [...quantities.entries()].map(([sku, count]) => ({ sku, count }));
+};
+
+const restoreStockExactlyOnce = async (products, session) => {
+    const groupedProducts = groupOrderProductQuantities(products);
+
+    for (const { sku, count } of groupedProducts) {
+        const result = await Product.updateOne(
+            { sku },
+            { $inc: { stock: count } },
+            { session },
+        );
+
+        if (result.matchedCount !== 1 || result.modifiedCount !== 1) {
+            throw new HttpError(
+                'Order stock could not be restored completely',
+                409,
+            );
+        }
+    }
+};
+
 const calculateOrderTotal = (order) => {
     const lineTotal = order.products.reduce(
         (total, item) =>
@@ -203,6 +244,38 @@ const buildOwnedOrdersFilter = (email, userId) => {
     };
 };
 
+const normalizeEmail = (email) =>
+    String(email || '')
+        .trim()
+        .toLowerCase();
+
+const isOrderOwnedByActor = (order, actor) => {
+    const orderUserId = order.userId?.toString?.();
+    if (orderUserId) return orderUserId === String(actor.id);
+
+    return normalizeEmail(order.email) === normalizeEmail(actor.email);
+};
+
+const buildCancellationClaimFilter = (id, actor, cancellableStatuses) => {
+    const filter = {
+        _id: id,
+        status: { $in: cancellableStatuses },
+    };
+
+    if (actor.role !== 'admin') {
+        filter.$or = [
+            { userId: actor.id },
+            {
+                email: normalizeEmail(actor.email),
+                userId: { $exists: false },
+            },
+            { email: normalizeEmail(actor.email), userId: null },
+        ];
+    }
+
+    return filter;
+};
+
 /**
  * Obtiene un pedido por su ID.
  *
@@ -312,81 +385,104 @@ export const createOrderService = async (data) => {
     return order;
 };
 
-const cancelOrder = async (
-    id,
-    {
-        cancelledBy = null,
-        reason = '',
-        source = 'client',
-        allowProcessing = false,
-    } = {},
-) => {
-    const order = await Order.findById(id);
-    if (!order) {
-        throw new HttpError('Order not found', 404);
+const cancelOrder = async (id, { actor, reason = '' } = {}) => {
+    if (!actor?.id || !actor?.role) {
+        throw new HttpError('Authentication required', 401);
     }
 
-    const cancellableStatuses = allowProcessing
-        ? ['pending', 'processing']
-        : ['pending'];
-    if (!cancellableStatuses.includes(order.status)) {
+    if (!supportsTransactions()) {
         throw new HttpError(
-            'Only pending orders can be cancelled by the client',
-            400,
+            'Order cancellation is temporarily unavailable',
+            503,
         );
     }
 
-    const amount = calculateOrderTotal(order);
+    const isAdmin = actor.role === 'admin';
+    const cancellableStatuses = isAdmin
+        ? ['pending', 'processing']
+        : ['pending'];
+    const session = await mongoose.startSession();
 
-    if (supportsTransactions()) {
-        const session = await mongoose.startSession();
-        try {
-            let updated;
-            await session.withTransaction(async () => {
-                await restoreStock(order.products, session);
-                order.status = 'cancelled';
-                order.cancellation = {
-                    cancelledAt: new Date(),
-                    cancelledBy,
-                    reason,
-                    source,
-                    amount,
-                };
-                order.refund = {
-                    amount,
-                    status: amount > 0 ? 'pending' : 'not_required',
-                };
-                updated = await order.save({ session });
-            });
-            sendOrderStatusEmail(updated).catch((err) =>
-                logger.error('Failed to send order status email:', err.message),
-            );
-            return updated;
-        } finally {
-            await session.endSession();
-        }
+    try {
+        let updated;
+
+        await session.withTransaction(
+            async () => {
+                const current = await Order.findById(id).session(session);
+
+                if (!current) {
+                    throw new HttpError('Order not found', 404);
+                }
+
+                if (!isAdmin && !isOrderOwnedByActor(current, actor)) {
+                    throw new HttpError('Forbidden', 403);
+                }
+
+                if (!cancellableStatuses.includes(current.status)) {
+                    throw new HttpError(
+                        'Order cancellation conflict: order is already cancelled or not cancellable',
+                        409,
+                    );
+                }
+
+                const amount = calculateOrderTotal(current);
+                const cancelledAt = new Date();
+                const claimFilter = buildCancellationClaimFilter(
+                    id,
+                    actor,
+                    cancellableStatuses,
+                );
+
+                const claimed = await Order.findOneAndUpdate(
+                    claimFilter,
+                    {
+                        $set: {
+                            status: 'cancelled',
+                            cancellation: {
+                                cancelledAt,
+                                cancelledBy: actor.id,
+                                reason,
+                                source: isAdmin ? 'admin' : 'client',
+                                amount,
+                            },
+                            refund: {
+                                amount,
+                                status: amount > 0 ? 'pending' : 'not_required',
+                            },
+                        },
+                    },
+                    {
+                        session,
+                        returnDocument: 'after',
+                        runValidators: true,
+                    },
+                );
+
+                if (!claimed) {
+                    throw new HttpError(
+                        'Order cancellation conflict: order was already claimed',
+                        409,
+                    );
+                }
+
+                await restoreStockExactlyOnce(claimed.products, session);
+                updated = claimed;
+            },
+            {
+                readConcern: { level: 'snapshot' },
+                writeConcern: { w: 'majority' },
+                readPreference: 'primary',
+            },
+        );
+
+        sendOrderStatusEmail(updated).catch((err) =>
+            logger.error('Failed to send order status email:', err.message),
+        );
+
+        return updated;
+    } finally {
+        await session.endSession();
     }
-
-    await restoreStock(order.products);
-    order.status = 'cancelled';
-    order.cancellation = {
-        cancelledAt: new Date(),
-        cancelledBy,
-        reason,
-        source,
-        amount,
-    };
-    order.refund = {
-        amount,
-        status: amount > 0 ? 'pending' : 'not_required',
-    };
-    const updated = await order.save();
-
-    sendOrderStatusEmail(updated).catch((err) =>
-        logger.error('Failed to send order status email:', err.message),
-    );
-
-    return updated;
 };
 
 /**
@@ -418,17 +514,20 @@ export const updateOrderService = async (id, data) => {
  * @returns {Promise<Order>} El pedido con el estado actualizado
  * @throws {HttpError} Si el pedido no existe o la transición no está permitida
  */
-export const updateOrderStatusService = async (id, newStatus) => {
+export const updateOrderStatusService = async (
+    id,
+    newStatus,
+    { actor } = {},
+) => {
+    if (newStatus === 'cancelled') {
+        return await cancelOrder(id, {
+            actor,
+        });
+    }
+
     const order = await Order.findById(id);
     if (!order) {
         throw new HttpError('Order not found', 404);
-    }
-
-    if (newStatus === 'cancelled') {
-        return await cancelOrder(id, {
-            source: 'admin',
-            allowProcessing: true,
-        });
     }
 
     const allowed = VALID_TRANSITIONS[order.status];

@@ -1,5 +1,5 @@
 import mongoose from 'mongoose';
-import { MongoMemoryServer } from 'mongodb-memory-server';
+import { MongoMemoryReplSet, MongoMemoryServer } from 'mongodb-memory-server';
 
 /**
  * Utilidades para los tests de integración.
@@ -17,6 +17,17 @@ export const startTestDB = async () => {
     mongod = await MongoMemoryServer.create();
     const uri = mongod.getUri();
     await mongoose.connect(uri);
+    return async () => {
+        await mongoose.disconnect();
+        await mongod.stop();
+    };
+};
+
+export const startTestReplicaSet = async () => {
+    mongod = await MongoMemoryReplSet.create({
+        replSet: { count: 1, storageEngine: 'wiredTiger' },
+    });
+    await mongoose.connect(mongod.getUri());
     return async () => {
         await mongoose.disconnect();
         await mongod.stop();

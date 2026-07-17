@@ -6,6 +6,7 @@ import { validate } from '../middlewares/validate.middleware.js';
 import { validateObjectId } from '../middlewares/objectid.middleware.js';
 import { orderLimiter } from '../middlewares/ratelimit.middleware.js';
 import {
+    cancelOrderSchema,
     createOrderSchema,
     updateOrderSchema,
     updateOrderStatusSchema,
@@ -153,6 +154,7 @@ ordersRouter.patch(
     '/:id/cancel',
     validateObjectId,
     authMiddleware,
+    validate(cancelOrderSchema),
     cancelOrder,
 );
 // Solo el admin puede cambiar el estado de un pedido

@@ -158,6 +158,13 @@ export const ordersController = () => {
             const order = await updateOrderStatusService(
                 req.params.id,
                 req.body.status,
+                {
+                    actor: {
+                        id: req.user.id,
+                        email: req.user.email,
+                        role: req.user.role,
+                    },
+                },
             );
             return res.status(200).json(order);
         } catch (error) {
@@ -167,14 +174,13 @@ export const ordersController = () => {
 
     const cancelOrder = async (req, res, next) => {
         try {
-            const order = await getOrderService(req.params.id);
-            if (!order) throw new HttpError('Order not found', 404);
-            assertOwnerOrAdmin(req, isOrderOwner(req, order));
             const updated = await cancelOrderService(req.params.id, {
-                cancelledBy: req.user.id,
+                actor: {
+                    id: req.user.id,
+                    email: req.user.email,
+                    role: req.user.role,
+                },
                 reason: req.body?.reason || '',
-                source: req.user.role === 'admin' ? 'admin' : 'client',
-                allowProcessing: req.user.role === 'admin',
             });
             return res.status(200).json(updated);
         } catch (error) {

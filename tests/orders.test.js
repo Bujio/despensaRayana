@@ -1,4 +1,8 @@
-import { startTestDB, clearCollections, setTestEnv } from './helpers/setup.js';
+import {
+    startTestReplicaSet,
+    clearCollections,
+    setTestEnv,
+} from './helpers/setup.js';
 
 setTestEnv();
 
@@ -11,7 +15,7 @@ const { Cart } = await import('../src/db/models/cart.model.js');
 let stopDB;
 
 beforeAll(async () => {
-    stopDB = await startTestDB();
+    stopDB = await startTestReplicaSet();
 });
 
 afterAll(async () => {
